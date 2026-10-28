@@ -178,9 +178,12 @@ Output full, production-ready, modular code without placeholders or `// TODO` st
 ## Phase status
 - [x] Phase 1: Project scaffolding & shared SQLite core
 - [x] Phase 2: Native iOS & Android bridges (Kotlin compile-checked + JVM-tested; Swift not compiled yet, see below)
-- [ ] Phase 3: Core engines
+- [x] Phase 3: Core engines (burn rate, Days-Until-Broke, True Liquid Balance reconciler, resume sync)
 - [ ] Phase 4: UI screens
-- [ ] Phase 5: Verification & testing (Phases 1–2 already ship tests for their own code)
+- [ ] Phase 5: Verification & testing (Phases 1–3 already ship tests for their own code)
+
+## Git
+- Commit as the repository owner only. Do **not** add `Co-Authored-By`, `Claude-Session` or any other attribution trailers to commit messages.
 
 ## Commands
 ```bash
@@ -229,7 +232,7 @@ All money is `REAL` in major units (₹), rounded to 2 dp. Domain code computes 
 
 Each event is one SQL transaction. Balance updates are relative (`SET current_bank_balance = current_bank_balance - ?`) so concurrent writers never lose updates.
 
-## Engine formulas (Swift `BurnRateMetrics` today; the Dart engine in Phase 3 must match)
+## Engine formulas (Dart `BurnRateMetrics` = Swift `BurnRateMetrics`; `test/fixtures/burn_rate_cases.json` checks both)
 All in minor units with integer (truncating) division; "today" is the local calendar day; days remaining counts today.
 - `trueSpendable = bankBalance − iOwe`
 - `dailyLimit = max(0, allowance − personalSpendThisCycleBeforeToday) / daysRemaining`
@@ -256,3 +259,15 @@ Rules are documented on the Dart class. `test/fixtures/expense_phrases.json` is 
 - `tool/ios/configure_xcode_project.rb`: idempotent Xcode project wiring.
 - `android/app/src/main/kotlin/com/splitburn/app/`: `MainActivity.kt` (capture channel); `capture/` `UpiNotificationListener.kt`, `UpiNotificationParser.kt`, `FinanceStore.kt`, `CategoryClassifier.kt`, `FinanceSchema.kt` (generated). Tests in `android/app/src/test/`.
 - `lib/domain/expense_phrase_parser.dart`, `lib/domain/category_classifier.dart`, `lib/core/native/native_bridge.dart`, `lib/core/providers/native_providers.dart`.
+
+## Code map (Phase 3)
+- `lib/domain/burn_rate.dart`: `LedgerSnapshot`, `BurnRateMetrics` (safe-to-spend, `tomorrowLimitMinor` + `recalibrationDeltaMinor` for the recalibration animation, 7-day burn, Days-Until-Broke, Survival Mode), `TrueLiquidBalance`.
+- `LedgerDao.watchLedgerSnapshot` reads every engine input in one SQL statement (consistent numbers, one stream). `LedgerDao.reconcileBankBalance` is the True Liquid Balance reconciler: a shortfall versus the real bank balance becomes an "Untracked spending" expense (or a plain correction), extra money just sets the balance, all in one transaction.
+- `lib/core/providers/engine_providers.dart`: `clockProvider` (override in tests), `currentDayProvider` (re-emits at local midnight), `currentCycleProvider` (rebuilds only on day / reset-day changes via `selectAsync`), `ledgerSnapshotProvider`, `burnRateProvider`, `trueLiquidBalanceProvider`, `cycleCategorySpendProvider`, `cycleDailySpendProvider`, `BalanceReconciler` notifier.
+- `lib/core/sync/ledger_sync.dart`: `LedgerSync.onForeground()` (markTablesUpdated via `syncExternalWrites`, re-read the day, charge due recurring bills, re-check UPI access) and `widgetRefresherProvider` (debounced WidgetKit reload whenever the ledger changes).
+- `lib/app.dart`: the root `SplitBurnApp` is the `WidgetsBindingObserver`; it syncs after the first frame and on every `AppLifecycleState.resumed`.
+
+## Riverpod / testing notes
+- UI must render `asyncValue.value` when present, not only `AsyncData`: the resume sync invalidates the day, so providers briefly refresh and a pure `AsyncData` match would flash a spinner on every resume.
+- Riverpod 3 pauses or disposes unlistened providers: tests must `container.listen` before reading (see `nextValue` in `test/providers/engine_providers_test.dart`).
+- Widget tests that touch Drift: don't `pumpAndSettle` (loading spinners never settle) and close the database inside the test's fake-async zone while pumping (see `test/app_lifecycle_test.dart`).

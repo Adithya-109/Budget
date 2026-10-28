@@ -87,3 +87,24 @@ class SettlementResult {
   /// Positive when cash came in (they paid the user back).
   final int bankDeltaMinor;
 }
+
+/// Outcome of `LedgerDao.reconcileBankBalance`.
+class ReconciliationResult {
+  const ReconciliationResult({
+    required this.previousMinor,
+    required this.actualMinor,
+    this.untrackedSpendTransactionId,
+  });
+
+  /// What the ledger thought the balance was.
+  final int previousMinor;
+
+  /// What the bank app shows (the ledger's balance now).
+  final int actualMinor;
+
+  /// Set when the shortfall was logged as an "Untracked spending" expense.
+  final String? untrackedSpendTransactionId;
+
+  /// Positive: more money than tracked. Negative: unlogged spending.
+  int get deltaMinor => actualMinor - previousMinor;
+}

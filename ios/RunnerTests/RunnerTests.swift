@@ -105,22 +105,62 @@ final class SharedSQLiteManagerTests: XCTestCase {
     XCTAssertEqual(snapshot.iOweMinor, 50_00)
   }
 
-  func testBurnRateMetrics() {
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(identifier: "Asia/Kolkata")!
-    let now = calendar.date(from: DateComponents(year: 2026, month: 10, day: 28, hour: 15))!
-    let snapshot = LedgerSnapshot(
-      monthlyAllowanceMinor: 15_000_00, bankBalanceMinor: 4_000_00, owedToMeMinor: 0,
-      iOweMinor: 500_00, spentBeforeTodayMinor: 13_400_00, spentTodayMinor: 650_00,
-      last7DaysSpendMinor: 3_500_00, currencySymbol: "₹",
-      cycle: BudgetCycle(containing: now, resetDay: 1, calendar: calendar), now: now)
-    let metrics = BurnRateMetrics(snapshot: snapshot, calendar: calendar)
-    XCTAssertEqual(metrics.daysRemaining, 4)
-    XCTAssertEqual(metrics.dailyLimitMinor, 400_00)
-    XCTAssertEqual(metrics.leftTodayMinor, -250_00)
-    XCTAssertEqual(metrics.tomorrowLimitMinor, 316_66)
-    XCTAssertEqual(metrics.trueSpendableMinor, 3_500_00)
-    XCTAssertEqual(metrics.daysUntilBroke, 7)
-    XCTAssertFalse(metrics.isSurvivalMode)
+  /// Same cases as test/domain/burn_rate_test.dart.
+  func testBurnRateSharedFixtures() throws {
+    struct Expect: Decodable {
+      let days_remaining: Int
+      let daily_limit: Int64
+      let left_today: Int64
+      let tomorrow_limit: Int64?
+      let avg_daily_burn: Int64
+      let true_spendable: Int64
+      let days_until_broke: Int?
+      let broke_date: String?
+      let survival: Bool
+    }
+    struct Case: Decodable {
+      let name: String
+      let today: String
+      let reset_day: Int
+      let allowance: Int64
+      let bank: Int64
+      let owed_to_me: Int64
+      let i_owe: Int64
+      let spent_before_today: Int64
+      let spent_today: Int64
+      let last_7_days: Int64
+      let expect: Expect
+    }
+    let url = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("test/fixtures/burn_rate_cases.json")
+    let cases = try JSONDecoder().decode([Case].self, from: Data(contentsOf: url))
+    XCTAssertFalse(cases.isEmpty)
+
+    let calendar = Calendar(identifier: .gregorian)
+    let isoDay = DateFormatter()
+    isoDay.calendar = calendar
+    isoDay.locale = Locale(identifier: "en_US_POSIX")
+    isoDay.timeZone = calendar.timeZone
+    isoDay.dateFormat = "yyyy-MM-dd"
+
+    for c in cases {
+      let today = try XCTUnwrap(isoDay.date(from: c.today), c.name)
+      let snapshot = LedgerSnapshot(
+        monthlyAllowanceMinor: c.allowance, bankBalanceMinor: c.bank, owedToMeMinor: c.owed_to_me,
+        iOweMinor: c.i_owe, spentBeforeTodayMinor: c.spent_before_today,
+        spentTodayMinor: c.spent_today, last7DaysSpendMinor: c.last_7_days, currencySymbol: "₹",
+        cycle: BudgetCycle(containing: today, resetDay: c.reset_day, calendar: calendar), now: today)
+      let m = BurnRateMetrics(snapshot: snapshot, calendar: calendar)
+      XCTAssertEqual(m.daysRemaining, c.expect.days_remaining, c.name)
+      XCTAssertEqual(m.dailyLimitMinor, c.expect.daily_limit, c.name)
+      XCTAssertEqual(m.leftTodayMinor, c.expect.left_today, c.name)
+      XCTAssertEqual(m.tomorrowLimitMinor, c.expect.tomorrow_limit, c.name)
+      XCTAssertEqual(m.avgDailyBurnMinor, c.expect.avg_daily_burn, c.name)
+      XCTAssertEqual(m.trueSpendableMinor, c.expect.true_spendable, c.name)
+      XCTAssertEqual(m.daysUntilBroke, c.expect.days_until_broke, c.name)
+      XCTAssertEqual(m.brokeDate.map(isoDay.string(from:)), c.expect.broke_date, c.name)
+      XCTAssertEqual(m.isSurvivalMode, c.expect.survival, c.name)
+    }
   }
 }

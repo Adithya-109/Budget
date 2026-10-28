@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../domain/budget_cycle.dart';
+import '../../../domain/burn_rate.dart';
 import '../../../domain/debt_simplifier.dart';
 import '../../../domain/expense_draft.dart';
 import '../../money.dart';
@@ -79,6 +81,57 @@ class LedgerDao extends DatabaseAccessor<AppDatabase> with _$LedgerDaoMixin {
       if (existing != null) await _deleteExpense(existing);
     });
   }
+
+  /// The True Liquid Balance reconciler: the user typed the balance their
+  /// bank app shows. Any gap versus the ledger is resolved in one SQL
+  /// transaction (so it can't race a native writer's relative update):
+  ///
+  /// * Bank shows **less** and [logShortfallAsSpend]: the gap is spending
+  ///   that never got logged, so it becomes an "Untracked spending" expense
+  ///   (it counts against the budget and the bank lands on [actualMinor]).
+  /// * Bank shows **more**, or the shortfall should not count as spending:
+  ///   the balance is simply set (e.g. pocket money arrived).
+  Future<ReconciliationResult> reconcileBankBalance(
+    int actualMinor, {
+    bool logShortfallAsSpend = true,
+    DateTime? at,
+  }) {
+    return transaction(() async {
+      final config = await (select(
+        budgetConfig,
+      )..where((c) => c.id.equals(1))).getSingle();
+      final previous = Money.toMinor(config.currentBankBalance);
+      final delta = actualMinor - previous;
+      String? loggedId;
+      if (delta < 0 && logShortfallAsSpend) {
+        loggedId = _uuid.v4();
+        await _insertExpense(
+          loggedId,
+          ExpenseDraft(
+            merchant: untrackedSpendingMerchant,
+            totalPaidMinor: -delta,
+            myShareMinor: -delta,
+            payer: const PaidByMe(),
+            category: TxnCategory.other,
+          ),
+          at ?? DateTime.now(),
+        );
+      } else if (delta != 0) {
+        await (update(budgetConfig)..where((c) => c.id.equals(1))).write(
+          BudgetConfigCompanion(
+            currentBankBalance: Value(Money.toMajor(actualMinor)),
+          ),
+        );
+      }
+      return ReconciliationResult(
+        previousMinor: previous,
+        actualMinor: actualMinor,
+        untrackedSpendTransactionId: loggedId,
+      );
+    });
+  }
+
+  static const untrackedSpendingMerchant = 'Untracked spending';
 
   Future<void> recategorize(String transactionId, TxnCategory category) async {
     await (update(transactions)..where((t) => t.id.equals(transactionId)))
@@ -189,6 +242,19 @@ class LedgerDao extends DatabaseAccessor<AppDatabase> with _$LedgerDaoMixin {
   // ---------------------------------------------------------------------------
   // Net-share reads
   // ---------------------------------------------------------------------------
+
+  /// One consistent read of everything the burn-rate engine needs for
+  /// [today] (any time on that local day) within [cycle]. Re-emits whenever
+  /// transactions, splits or settings change.
+  Stream<LedgerSnapshot> watchLedgerSnapshot({
+    required BudgetCycle cycle,
+    required DateTime today,
+  }) => _ledgerSnapshotQuery(cycle, today).watchSingle();
+
+  Future<LedgerSnapshot> ledgerSnapshot({
+    required BudgetCycle cycle,
+    required DateTime today,
+  }) => _ledgerSnapshotQuery(cycle, today).getSingle();
 
   /// `financial_summary_view` (all-time personal spend, open IOUs, balance).
   Stream<FinancialSummaryViewData> watchFinancialSummary() => attachedDatabase
@@ -328,6 +394,55 @@ class LedgerDao extends DatabaseAccessor<AppDatabase> with _$LedgerDaoMixin {
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------
+
+  Selectable<LedgerSnapshot> _ledgerSnapshotQuery(
+    BudgetCycle cycle,
+    DateTime today,
+  ) {
+    final local = today.toLocal();
+    final dayStart = DateTime(local.year, local.month, local.day);
+    final tomorrow = DateTime(local.year, local.month, local.day + 1);
+    final weekStart = DateTime(local.year, local.month, local.day - 6);
+    // Spend "before today" never reaches outside the cycle.
+    final beforeTodayEnd = dayStart.isBefore(cycle.start)
+        ? cycle.start
+        : (dayStart.isAfter(cycle.end) ? cycle.end : dayStart);
+    const sum =
+        'SELECT COALESCE(SUM(my_share), 0.0) FROM transactions '
+        'WHERE created_at >= ? AND created_at < ?';
+    return customSelect(
+      '''
+      SELECT v.monthly_allowance AS allowance, v.bank_balance AS bank,
+             v.total_owed_to_me AS owed_to_me, v.total_i_owe AS i_owe,
+             c.currency_symbol AS symbol,
+             ($sum) AS before_today, ($sum) AS spent_today, ($sum) AS last_7
+      FROM financial_summary_view v, budget_config c
+      WHERE c.id = 1
+      ''',
+      variables: [
+        Variable.withDateTime(cycle.start),
+        Variable.withDateTime(beforeTodayEnd),
+        Variable.withDateTime(dayStart),
+        Variable.withDateTime(tomorrow),
+        Variable.withDateTime(weekStart),
+        Variable.withDateTime(tomorrow),
+      ],
+      readsFrom: {transactions, splitEntries, budgetConfig},
+    ).map(
+      (row) => LedgerSnapshot(
+        monthlyAllowanceMinor: Money.toMinor(row.read<double>('allowance')),
+        bankBalanceMinor: Money.toMinor(row.read<double>('bank')),
+        owedToMeMinor: Money.toMinor(row.read<double>('owed_to_me')),
+        iOweMinor: Money.toMinor(row.read<double>('i_owe')),
+        spentBeforeTodayMinor: Money.toMinor(row.read<double>('before_today')),
+        spentTodayMinor: Money.toMinor(row.read<double>('spent_today')),
+        last7DaysSpendMinor: Money.toMinor(row.read<double>('last_7')),
+        currencySymbol: row.read<String>('symbol'),
+        cycle: cycle,
+        today: dayStart,
+      ),
+    );
+  }
 
   Future<void> _insertExpense(
     String id,
