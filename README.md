@@ -31,6 +31,22 @@ Phase 1 (project scaffold and shared SQLite core) is done:
 - `schema/finance_schema.sql`: the exact DDL for the Swift and Kotlin bridges,
   kept in sync with Drift by a snapshot test.
 
+Phase 2 (native bridges) is done:
+
+- **iOS:** a `Log Split Expense` App Intent for Apple Pay automations, the
+  Action Button and Siri ("Spent 450 on Domino's with Rahul and Priya"). It
+  writes straight into the shared App Group database without starting
+  Flutter. Home Screen and Lock Screen widgets show safe-to-spend, true
+  liquid balance and Survival Mode.
+- **Android:** a notification listener that turns GPay, PhonePe, Paytm, BHIM
+  and bank debit alerts into ledger entries while the app is closed.
+- One schema, generated from Drift for Swift and Kotlin, and one phrase
+  parser in Dart and Swift, checked against shared fixtures.
+
+After cloning, open `ios/Runner.xcworkspace`, set your signing team for the
+`Runner` and `BalanceWidgetExtension` targets, and tick the
+`group.com.splitburn.app` App Group. See `CLAUDE.md` for details.
+
 ## Development
 
 ```bash

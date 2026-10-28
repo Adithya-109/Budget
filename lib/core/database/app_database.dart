@@ -29,7 +29,21 @@ class AppDatabase extends _$AppDatabase {
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
-      await m.createAll();
+      // Not `m.createAll()`: an iOS intent or the Android listener may have
+      // created the schema before Flutter's first launch, and Drift's index
+      // DDL has no IF NOT EXISTS. Tables and views already use it.
+      for (final entity in allSchemaEntities) {
+        if (entity is Index) {
+          await customStatement(
+            entity.createStatementsByDialect[SqlDialect.sqlite]!.replaceFirst(
+              RegExp(r'^CREATE INDEX (?!IF NOT EXISTS)'),
+              'CREATE INDEX IF NOT EXISTS ',
+            ),
+          );
+        } else {
+          await m.create(entity);
+        }
+      }
       await _ensureBudgetConfigRow();
     },
     beforeOpen: (details) async {

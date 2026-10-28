@@ -177,10 +177,10 @@ Output full, production-ready, modular code without placeholders or `// TODO` st
 
 ## Phase status
 - [x] Phase 1: Project scaffolding & shared SQLite core
-- [ ] Phase 2: Native iOS & Android bridges
+- [x] Phase 2: Native iOS & Android bridges (Kotlin compile-checked + JVM-tested; Swift not compiled yet, see below)
 - [ ] Phase 3: Core engines
 - [ ] Phase 4: UI screens
-- [ ] Phase 5: Verification & testing (Phase 1 already ships tests for its own math)
+- [ ] Phase 5: Verification & testing (Phases 1–2 already ship tests for their own code)
 
 ## Commands
 ```bash
@@ -188,8 +188,16 @@ flutter pub get
 dart run build_runner build   # regenerate *.drift.dart (Drift) and *.g.dart (Riverpod)
 flutter analyze
 flutter test
-UPDATE_SCHEMA=1 flutter test test/database/schema_snapshot_test.dart  # refresh schema/finance_schema.sql
+UPDATE_SCHEMA=1 flutter test test/database/schema_snapshot_test.dart  # refresh the SQL / Swift / Kotlin schema files
+ruby tool/ios/configure_xcode_project.rb   # (gem install xcodeproj) re-wire native targets into Runner.xcodeproj
+cd android && ./gradlew :app:testDebugUnitTest   # Kotlin UPI parser tests
+# iOS: open ios/Runner.xcworkspace and run the RunnerTests scheme (parser parity + SQLite manager tests)
 ```
+
+## One-time manual setup (cannot be done from source files)
+1. Open `ios/Runner.xcworkspace` in Xcode, pick your **Team** under *Signing & Capabilities* for **Runner** and **BalanceWidgetExtension**.
+2. Both targets already carry `group.com.splitburn.app` in their `.entitlements`; under *Signing & Capabilities → App Groups* tick that group so Xcode registers it with your developer account.
+3. Android: in the app, the user grants *Notification access* to "SplitBurn UPI auto-capture" (the Dart `NativeBridge.openUpiCaptureSettings()` opens the right screen).
 
 ## Decisions that deviate from / refine the spec
 - **`sqlite3_flutter_libs` is not a dependency.** With `sqlite3` 3.x the native library ships via build hooks and `sqlite3_flutter_libs` 0.6.0 is an empty end-of-life shim; depending on `sqlite3` directly is the supported setup.
@@ -199,8 +207,14 @@ UPDATE_SCHEMA=1 flutter test test/database/schema_snapshot_test.dart  # refresh 
   - `subscriptions.cancel_url TEXT` for the Free Trial Shield's "cancel now" link.
   - `transactions.category` also accepts `'Other'`; `transactions.source` also accepts `'SUBSCRIPTION'` (auto-generated recurring bills). Unknown codes written by native code read back as `Other` / `APP` rather than crashing the stream.
 - **Drift generates standalone `*.drift.dart` parts** (`drift_dev:not_shared` in `build.yaml`) and runs before `riverpod_generator`, so providers can return Drift row types. Generated files are committed.
-- **`schema/finance_schema.sql` is the exact DDL Drift creates.** Swift (Phase 2) must embed that file verbatim; a snapshot test fails if Drift's schema drifts from it.
-- **Drift owns `PRAGMA user_version`.** Native code never writes it, and only creates tables with `IF NOT EXISTS` using the snapshot DDL.
+- **The Drift schema is rendered into `schema/finance_schema.sql`, `ios/SharedStorage/FinanceSchema.swift` and `android/.../capture/FinanceSchema.kt`** by `test/database/schema_snapshot_test.dart`, which fails when any of them is stale. Never edit those three by hand.
+- **Drift owns `PRAGMA user_version`.** Native code never writes it and only runs the idempotent generated DDL. Drift's `onCreate` tolerates a schema a native writer created first (`test/database/native_writer_contract_test.dart`).
+- **One SQLite copy per process.** Two SQLite libraries in one process break POSIX locks and can corrupt the file. iOS: `pubspec.yaml` sets `sqlite3` `source: ios: process`, so Dart uses the system SQLite that Runner links (`-lsqlite3`) for the App Intents. Android: Dart bundles its own SQLite, so the notification listener runs in a separate `:capture` process.
+- **iOS App Intents live in Runner** and run without booting Flutter: the template's UIScene lifecycle only creates the implicit engine when a scene shows the UI, which background intent launches never do.
+- **Widget** bundle ID `com.splitburn.app.BalanceWidget`, deployment target iOS 16 (whole project). Its version comes from Flutter's `Generated.xcconfig` via `BalanceWidget.xcconfig`. Deep link `splitburn://dashboard` is registered in Runner's Info.plist (routing lands in Phase 4).
+- **Storage channel** `com.splitburn.app/storage`: `getAppGroupPath` (String or nil) and `reloadWidgets`. **Capture channel** `com.splitburn.app/capture` (Android): `isUpiCaptureEnabled`, `openUpiCaptureSettings`. Dart wraps both in `lib/core/native/native_bridge.dart`.
+- **`home_widget` is not used**: the widget reads SQLite directly and the app reloads it through the storage channel.
+- **UPI auto-capture** logs only clear, completed debits from an allow-list of UPI/bank apps (bank SMS must also look like an account alert). It skips credits, refunds, collect requests, failures, pending payments, reminders and OTP texts. Duplicates are dropped by UPI reference (last 200 kept in the `:capture` process's SharedPreferences) and by "same amount from `ANDROID_UPI_AUTO` within ±180 s" (GPay + bank SMS for one payment). Rows are solo expenses (`my_share = total_paid`); the user splits them later via `LedgerDao.resplitTransaction`.
 
 ## Write contract for every writer (Dart, Swift, Kotlin)
 All money is `REAL` in major units (₹), rounded to 2 dp. Domain code computes in integer minor units (paise) and converts at the DB boundary.
@@ -215,8 +229,30 @@ All money is `REAL` in major units (₹), rounded to 2 dp. Domain code computes 
 
 Each event is one SQL transaction. Balance updates are relative (`SET current_bank_balance = current_bank_balance - ?`) so concurrent writers never lose updates.
 
+## Engine formulas (Swift `BurnRateMetrics` today; the Dart engine in Phase 3 must match)
+All in minor units with integer (truncating) division; "today" is the local calendar day; days remaining counts today.
+- `trueSpendable = bankBalance − iOwe`
+- `dailyLimit = max(0, allowance − personalSpendThisCycleBeforeToday) / daysRemaining`
+- `leftToday = dailyLimit − personalSpendToday` (negative = over)
+- `tomorrowLimit = max(0, allowance − personalSpendThisCycleIncludingToday) / (daysRemaining − 1)` (none on the last day): the "recalibration" number
+- `avgDailyBurn = personalSpend(7 days ending today, today included) / 7`
+- `daysUntilBroke = max(0, trueSpendable) / avgDailyBurn` (none when `avgDailyBurn = 0`); `brokeDate = today + daysUntilBroke`
+- Survival Mode when `daysUntilBroke < daysRemaining`
+
+## Natural-language phrase parser (Dart `ExpensePhraseParser` = Swift `ExpensePhraseParser`)
+Rules are documented on the Dart class. `test/fixtures/expense_phrases.json` is the contract: the Dart test and `ios/RunnerTests` both run it, so add a fixture for every behaviour change and update both ports. The category keyword lists exist in Dart, Swift and Kotlin and must stay identical.
+
 ## Code map (Phase 1)
 - `lib/core/database/` – Drift tables, converters, the `financial_summary_view`, DAOs (`LedgerDao`, `BudgetDao`, `SubscriptionsDao`), WAL connection setup, App Group path resolution.
 - `lib/core/money.dart` – minor-unit conversion and currency formatting.
 - `lib/core/providers/` – Riverpod (codegen) providers for the database and DAOs.
 - `lib/domain/` – pure Dart: `BudgetCycle`, `SplitCalculator` (equal / exact / percentage / itemized with proportional tax & tip), `ExpenseDraft`, `DebtSimplifier` (exact minimum-transaction settlement for groups up to 15 people, greedy min-cash-flow above that).
+
+## Code map (Phase 2)
+- `ios/SharedStorage/` (Runner + widget): `SharedSQLiteManager.swift` (C-API SQLite, WAL, write contract, snapshot reads), `FinanceSchema.swift` (generated), `BudgetMath.swift` (cycle, burn-rate metrics, money formatting).
+- `ios/Runner/`: `AppDelegate.swift` (storage channel), `QuickLogIntent.swift` (`LogSplitExpenseIntent`, App Shortcuts), `ExpensePhraseParser.swift`, `Runner.entitlements`.
+- `ios/BalanceWidgetExtension/`: `BalanceWidget.swift` (small / medium / Lock Screen rectangular, circular, inline), `Info.plist`, entitlements, xcconfig.
+- `ios/RunnerTests/RunnerTests.swift`: parser parity against the shared fixtures, SQLite manager and burn-rate tests.
+- `tool/ios/configure_xcode_project.rb`: idempotent Xcode project wiring.
+- `android/app/src/main/kotlin/com/splitburn/app/`: `MainActivity.kt` (capture channel); `capture/` `UpiNotificationListener.kt`, `UpiNotificationParser.kt`, `FinanceStore.kt`, `CategoryClassifier.kt`, `FinanceSchema.kt` (generated). Tests in `android/app/src/test/`.
+- `lib/domain/expense_phrase_parser.dart`, `lib/domain/category_classifier.dart`, `lib/core/native/native_bridge.dart`, `lib/core/providers/native_providers.dart`.

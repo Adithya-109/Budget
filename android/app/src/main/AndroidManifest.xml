@@ -25,6 +25,24 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- UPI / bank payment auto-capture. Runs in its own process so its
+             SQLite connection never shares a process with Flutter's SQLite. -->
+        <service
+            android:name=".capture.UpiNotificationListener"
+            android:label="@string/upi_capture_label"
+            android:exported="false"
+            android:process=":capture"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.notification.default_filter_types"
+                android:value="alerting|conversations" />
+            <meta-data
+                android:name="android.service.notification.disabled_filter_types"
+                android:value="ongoing|silent" />
+        </service>
         <!-- Impeller is the default renderer; pinned explicitly for 120Hz charts. -->
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"

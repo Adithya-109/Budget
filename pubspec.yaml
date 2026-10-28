@@ -106,3 +106,13 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+hooks:
+  user_defines:
+    sqlite3:
+      # iOS: use the system SQLite that Runner already links for the Swift
+      # AppIntents. Two SQLite copies in one process break POSIX locking and
+      # can corrupt the shared ledger. Elsewhere use the bundled build.
+      source:
+        ios: process
+        default: sqlite3
