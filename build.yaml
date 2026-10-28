@@ -1,0 +1,25 @@
+targets:
+  $default:
+    builders:
+      # Drift writes standalone `*.drift.dart` parts (not the shared `.g.dart`)
+      # so riverpod_generator can resolve Drift row classes in provider types.
+      drift_dev:
+        enabled: false
+      drift_dev:preparing_builder:
+        enabled: true
+      drift_dev:analyzer:
+        enabled: true
+      drift_dev:not_shared:
+        enabled: true
+        options:
+          # Native writers store Unix epoch seconds; keep Drift on the same format.
+          store_date_time_values_as_text: false
+          sql:
+            dialect: sqlite
+            options:
+              version: "3.45"
+
+global_options:
+  drift_dev:not_shared:
+    runs_before:
+      - riverpod_generator

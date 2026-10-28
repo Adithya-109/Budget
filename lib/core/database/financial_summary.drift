@@ -1,0 +1,11 @@
+import 'tables.dart';
+
+-- Fast read view for WidgetKit and the burn-rate engine (CLAUDE.md §3.5).
+-- Swift reads this view directly, so keep the column names stable.
+CREATE VIEW IF NOT EXISTS financial_summary_view AS
+SELECT
+    (SELECT monthly_allowance FROM budget_config WHERE id = 1) AS monthly_allowance,
+    (SELECT current_bank_balance FROM budget_config WHERE id = 1) AS bank_balance,
+    COALESCE((SELECT SUM(my_share) FROM transactions), 0.0) AS total_personal_spend,
+    COALESCE((SELECT SUM(amount) FROM split_entries WHERE direction = 'OWES_ME' AND is_settled = 0), 0.0) AS total_owed_to_me,
+    COALESCE((SELECT SUM(amount) FROM split_entries WHERE direction = 'I_OWE' AND is_settled = 0), 0.0) AS total_i_owe;
