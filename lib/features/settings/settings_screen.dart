@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/database/connection.dart';
 import '../../core/money.dart';
 import '../../core/providers/database_providers.dart';
 import '../../core/providers/engine_providers.dart';
@@ -142,6 +143,18 @@ class SettingsScreen extends ConsumerWidget {
           const SectionHeader('Automation'),
           if (bridge.supportsUpiCapture)
             _UpiCaptureTile()
+          else if (kSandboxLedger)
+            ListTile(
+              key: const Key('sandbox-ledger-note'),
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.info_outline, color: context.sb.trialAmber),
+              title: const Text('Test build (free Apple ID)'),
+              subtitle: const Text(
+                'Your ledger lives inside the app, so the widget and Shortcuts '
+                'can\'t see it yet. With a paid developer account and the App '
+                'Group enabled, it moves over automatically.',
+              ),
+            )
           else
             const ListTile(
               contentPadding: EdgeInsets.zero,
