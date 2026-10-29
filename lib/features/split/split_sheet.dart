@@ -71,6 +71,9 @@ class _SplitSheetState extends ConsumerState<SplitSheet> {
   bool _saving = false;
   bool _categoryTouched = false;
 
+  /// Receipt mode: the person whose avatar snaps onto the next tapped dish.
+  Participant _active = const Me();
+
   @override
   void dispose() {
     for (final c in [
@@ -224,10 +227,19 @@ class _SplitSheetState extends ConsumerState<SplitSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              widget.resplitTransactionId == null ? 'SPLIT A BILL' : 'RE-SPLIT',
-              style: Theme.of(context).appBarTheme.titleTextStyle,
+              widget.resplitTransactionId == null ? 'Split a bill' : 'Re-split',
+              style: SbType.title.copyWith(color: context.sb.textPrimary),
             ),
             const SizedBox(height: 14),
+            if (outcome case SplitReady(:final draft)
+                when draft.paidByMe && draft.friendShares.isNotEmpty) ...[
+              NetShareImpactBar(
+                myShareMinor: draft.myShareMinor,
+                floatingMinor: draft.frontedForOthersMinor,
+                symbol: symbol,
+              ),
+              const SizedBox(height: 14),
+            ],
             SegmentedButton<SplitMode>(
               key: const Key('split-mode'),
               showSelectedIcon: false,
@@ -250,7 +262,7 @@ class _SplitSheetState extends ConsumerState<SplitSheet> {
                   decimal: true,
                 ),
                 inputFormatters: moneyInputFormatters,
-                style: SbType.figure,
+                style: SbType.balance.copyWith(color: context.sb.textPrimary),
                 decoration: InputDecoration(
                   labelText: 'Total bill',
                   prefixText: '$symbol ',
@@ -316,13 +328,9 @@ class _SplitSheetState extends ConsumerState<SplitSheet> {
                 children: [
                   for (final p in _form.participants)
                     ChoiceChip(
+                      avatar: FriendAvatar(participantName(p), size: 22),
                       label: Text(participantName(p)),
                       selected: _form.payer == p,
-                      showCheckmark: false,
-                      labelStyle: TextStyle(
-                        color: _form.payer == p ? SbColors.ink : SbColors.paper,
-                        fontWeight: FontWeight.w800,
-                      ),
                       onSelected: (_) => _update(_form.copyWith(payer: p)),
                     ),
                 ],
@@ -341,8 +349,8 @@ class _SplitSheetState extends ConsumerState<SplitSheet> {
                             '(${_form.mode == SplitMode.percentage ? '${_formatPercent(outcome.remainingMinor!.abs())}%' : fmt(outcome.remainingMinor!.abs())} '
                             '${outcome.remainingMinor! > 0 ? 'left' : 'over'})',
                   key: const Key('split-error'),
-                  style: const TextStyle(
-                    color: SbColors.magma,
+                  style: TextStyle(
+                    color: context.sb.iOwe,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -356,8 +364,8 @@ class _SplitSheetState extends ConsumerState<SplitSheet> {
                   : null,
               child: Text(
                 widget.resplitTransactionId == null
-                    ? 'SAVE SPLIT'
-                    : 'UPDATE SPLIT',
+                    ? 'Save split'
+                    : 'Update split',
               ),
             ),
           ],
@@ -416,7 +424,7 @@ class _SplitSheetState extends ConsumerState<SplitSheet> {
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: _fillEvenPercent,
-              child: const Text('EVEN SPLIT'),
+              child: const Text('Even split'),
             ),
           ),
           for (final p in _form.participants)
@@ -456,7 +464,7 @@ class _SplitSheetState extends ConsumerState<SplitSheet> {
                   child: FilledButton.icon(
                     onPressed: _scanning ? null : () => _scan(fromCamera: true),
                     icon: const Icon(Icons.document_scanner_outlined),
-                    label: Text(_scanning ? 'READING…' : 'SCAN'),
+                    label: Text(_scanning ? 'Reading…' : 'Scan'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -470,12 +478,22 @@ class _SplitSheetState extends ConsumerState<SplitSheet> {
                 child: OutlinedButton.icon(
                   onPressed: _addItem,
                   icon: const Icon(Icons.add),
-                  label: const Text('ITEM'),
+                  label: const Text('Item'),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
+          if (_form.claimedItems.isNotEmpty) ...[
+            _AvatarDock(
+              people: _form.participants,
+              active: _form.participants.contains(_active)
+                  ? _active
+                  : const Me(),
+              onSelect: (p) => setState(() => _active = p),
+            ),
+            const SizedBox(height: 10),
+          ],
           if (_form.claimedItems.isEmpty)
             const EmptyNote(
               'Scan the bill, then tap who had what.',
@@ -483,12 +501,17 @@ class _SplitSheetState extends ConsumerState<SplitSheet> {
             ),
           for (var i = 0; i < _form.claimedItems.length; i++)
             _ClaimRow(
+              key: Key('claim-$i'),
               claim: _form.claimedItems[i],
               people: _form.participants,
-              price: fmt(_form.claimedItems[i].item.priceMinor),
-              onToggle: (p) {
+              fmt: fmt,
+              onTap: () {
+                final who = _form.participants.contains(_active)
+                    ? _active
+                    : const Me();
+                HapticFeedback.lightImpact();
                 final items = [..._form.claimedItems];
-                items[i] = items[i].toggle(p);
+                items[i] = items[i].toggle(who);
                 _update(_form.copyWith(claimedItems: items));
               },
               onRemove: () => _update(
@@ -547,18 +570,124 @@ class _ShareRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = TextStyle(
-      fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
+    final sb = context.sb;
+    final style = SbType.body.copyWith(
+      fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
+      color: sb.textPrimary,
     );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
+          if (!bold) ...[
+            FriendAvatar(name, size: 26),
+            const SizedBox(width: 10),
+          ],
           Expanded(child: Text(name, style: style)),
+          Text(value, style: SbType.amount.copyWith(color: sb.textPrimary)),
+        ],
+      ),
+    );
+  }
+}
+
+/// "My share ₹320 (26%) | Floating friend IOUs ₹880 (74%)": what hits the
+/// budget versus cash that comes back (DESIGN_SYSTEM §3 Page 2).
+class NetShareImpactBar extends StatelessWidget {
+  const NetShareImpactBar({
+    super.key,
+    required this.myShareMinor,
+    required this.floatingMinor,
+    required this.symbol,
+  });
+
+  final int myShareMinor;
+  final int floatingMinor;
+  final String symbol;
+
+  @override
+  Widget build(BuildContext context) {
+    final sb = context.sb;
+    final total = myShareMinor + floatingMinor;
+    if (total <= 0) return const SizedBox.shrink();
+    final mine = myShareMinor / total;
+    final minePct = (mine * 100).round();
+    String fmt(int v) => Money.format(v, symbol: symbol);
+    final amber = sb.trialAmber;
+    final onMint = context.isDark ? sb.canvas : Colors.white;
+    return ClipRRect(
+      key: const Key('net-share-bar'),
+      borderRadius: BorderRadius.circular(SbRadius.row),
+      child: SizedBox(
+        height: 64,
+        child: Row(
+          children: [
+            Expanded(
+              flex: (mine * 1000).round().clamp(180, 820),
+              child: ColoredBox(
+                color: sb.safeMint,
+                child: _BarLabel(
+                  title: 'My share',
+                  value: '${fmt(myShareMinor)} ($minePct%)',
+                  color: onMint,
+                  align: CrossAxisAlignment.start,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: ((1 - mine) * 1000).round().clamp(180, 820),
+              child: CustomPaint(
+                painter: _HatchPainter(
+                  base: amber.withValues(alpha: 0.85),
+                  stripe: amber,
+                ),
+                child: _BarLabel(
+                  title: 'Floating IOUs',
+                  value: '${fmt(floatingMinor)} (${100 - minePct}%)',
+                  color: SplitBurnTokens.thermalInk,
+                  align: CrossAxisAlignment.end,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BarLabel extends StatelessWidget {
+  const _BarLabel({
+    required this.title,
+    required this.value,
+    required this.color,
+    required this.align,
+  });
+
+  final String title;
+  final String value;
+  final Color color;
+  final CrossAxisAlignment align;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: align,
+        children: [
           Text(
-            value,
-            style: style.copyWith(
-              fontFeatures: const [FontFeature.tabularFigures()],
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: SbType.chip.copyWith(color: color.withValues(alpha: 0.85)),
+          ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: SbType.amount.copyWith(color: color, fontSize: 15),
             ),
           ),
         ],
@@ -567,71 +696,167 @@ class _ShareRow extends StatelessWidget {
   }
 }
 
+/// Diagonal hatching for money that isn't really spent.
+class _HatchPainter extends CustomPainter {
+  _HatchPainter({required this.base, required this.stripe});
+
+  final Color base;
+  final Color stripe;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Stripes start left of the box: clip so they never cover "My share".
+    canvas.clipRect(Offset.zero & size);
+    canvas.drawRect(Offset.zero & size, Paint()..color = base);
+    final paint = Paint()
+      ..color = stripe
+      ..strokeWidth = 5;
+    for (var x = -size.height; x < size.width; x += 12) {
+      canvas.drawLine(
+        Offset(x, size.height),
+        Offset(x + size.height, 0),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_HatchPainter old) =>
+      old.base != base || old.stripe != stripe;
+}
+
+/// Magnetic avatar dock: pick a person, then tap the dishes they had.
+class _AvatarDock extends StatelessWidget {
+  const _AvatarDock({
+    required this.people,
+    required this.active,
+    required this.onSelect,
+  });
+
+  final List<Participant> people;
+  final Participant active;
+  final ValueChanged<Participant> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final sb = context.sb;
+    return GlassCard(
+      key: const Key('avatar-dock'),
+      radius: SbRadius.pill,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final p in people)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: GestureDetector(
+                        key: Key('dock-${participantName(p)}'),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          onSelect(p);
+                        },
+                        child: AnimatedScale(
+                          scale: p == active ? 1.12 : 1,
+                          duration: const Duration(milliseconds: 160),
+                          child: FriendAvatar(
+                            participantName(p),
+                            size: 34,
+                            ring: p == active ? sb.accent : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'tap dishes for ${participantName(active)}',
+            style: SbType.chip.copyWith(color: sb.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A receipt line as a Bento card: dish, price, who had it and each share.
 class _ClaimRow extends StatelessWidget {
   const _ClaimRow({
+    super.key,
     required this.claim,
     required this.people,
-    required this.price,
-    required this.onToggle,
+    required this.fmt,
+    required this.onTap,
     required this.onRemove,
   });
 
   final ClaimedItem claim;
   final List<Participant> people;
-  final String price;
-  final ValueChanged<Participant> onToggle;
+  final String Function(int) fmt;
+  final VoidCallback onTap;
   final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: claim.claimedBy.isEmpty ? SbColors.magma : SbColors.raised,
-          width: 2,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  claim.item.label,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-              ),
-              Text(price, style: const TextStyle(fontWeight: FontWeight.w800)),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: onRemove,
-                icon: const Icon(Icons.close, size: 18),
-                tooltip: 'Remove item',
-              ),
-            ],
-          ),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final p in people)
-                FilterChip(
-                  label: Text(participantName(p)),
-                  selected: claim.claimedBy.contains(p),
-                  labelStyle: TextStyle(
-                    color: claim.claimedBy.contains(p)
-                        ? SbColors.ink
-                        : SbColors.paper,
-                    fontWeight: FontWeight.w700,
+    final sb = context.sb;
+    final eaters = [
+      for (final p in people)
+        if (claim.claimedBy.contains(p)) participantName(p),
+    ];
+    final unclaimed = eaters.isEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: BentoCard(
+        onTap: onTap,
+        radius: SbRadius.row,
+        padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+        borderColor: unclaimed ? sb.iOwe : null,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${claim.item.label} · ${fmt(claim.item.priceMinor)}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: SbType.body.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: sb.textPrimary,
+                    ),
                   ),
-                  onSelected: (_) => onToggle(p),
-                ),
-            ],
-          ),
-        ],
+                  const SizedBox(height: 2),
+                  Text(
+                    unclaimed
+                        ? 'Nobody yet: tap to add'
+                        : eaters.length == 1
+                        ? eaters.single
+                        : '${fmt(claim.item.priceMinor ~/ eaters.length)} each · ${eaters.length} people',
+                    style: SbType.receipt.copyWith(
+                      fontSize: 12,
+                      color: unclaimed ? sb.iOwe : sb.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            AvatarStack(eaters, size: 28),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: onRemove,
+              icon: Icon(Icons.close_rounded, size: 18, color: sb.textMuted),
+              tooltip: 'Remove item',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -645,6 +870,7 @@ class _Summary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sb = context.sb;
     final draft = ready.draft;
     final text = switch (draft.payer) {
       PaidByMe() when draft.friendShares.isEmpty =>
@@ -655,14 +881,25 @@ class _Summary extends StatelessWidget {
       PaidByFriend(:final friend) =>
         '${friend.name} paid. You owe them ${fmt(draft.myShareMinor)}; your bank isn\'t touched yet.',
     };
-    return BrutalCard(
+    return BentoCard(
       key: const Key('split-summary'),
-      color: SbColors.raised,
-      shadowColor: SbColors.owed,
-      padding: const EdgeInsets.all(12),
-      child: Text(
-        text,
-        style: const TextStyle(fontWeight: FontWeight.w700, height: 1.3),
+      color: sb.surfaceElevated,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline_rounded, color: sb.safeMint, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+                color: sb.textPrimary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -723,7 +960,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('ADD')),
+        FilledButton(onPressed: _submit, child: const Text('Add')),
       ],
     );
   }

@@ -8,9 +8,10 @@ import '../../core/providers/engine_providers.dart';
 import '../../core/providers/native_providers.dart';
 import '../../ui/category_style.dart';
 import '../../ui/theme.dart';
+import '../../ui/theme_mode.dart';
+import '../../ui/theme_reveal.dart';
 import '../../ui/widgets.dart';
 import '../ledger/nudge_composer.dart';
-import '../split/split_sheet.dart';
 import '../split/transaction_sheet.dart';
 import 'burn_chart.dart';
 import 'command_bar.dart';
@@ -20,7 +21,7 @@ import 'survival_meter.dart';
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key, required this.onOpenFriends});
 
-  /// Switches the shell to the Friends tab (digest reminder).
+  /// Switches the shell to the Friends tab (owed pill, digest reminder).
   final VoidCallback onOpenFriends;
 
   @override
@@ -32,42 +33,128 @@ class DashboardScreen extends ConsumerWidget {
     final liquid = balance.value;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('SPLITBURN')),
-      floatingActionButton: FloatingActionButton.extended(
-        key: const Key('add-expense'),
-        // Every tab's FAB lives in one IndexedStack: tags must be unique.
-        heroTag: 'fab-split',
-        onPressed: () => showSplitSheet(context),
-        icon: const Icon(Icons.add),
-        label: const Text(
-          'SPLIT A BILL',
-          style: TextStyle(fontWeight: FontWeight.w900),
+      body: SafeArea(
+        bottom: false,
+        child: switch ((metrics, liquid)) {
+          (final m?, final b?) => Stack(
+            children: [
+              ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                children: [
+                  _Header(daysLeft: m.daysRemaining),
+                  const SizedBox(height: 16),
+                  LiquidBalanceCard(
+                    balance: b,
+                    symbol: symbol,
+                    onOpenFriends: onOpenFriends,
+                  ),
+                  const SizedBox(height: 14),
+                  SafeToSpendCard(metrics: m, symbol: symbol),
+                  const SizedBox(height: 14),
+                  SurvivalMeter(metrics: m, symbol: symbol),
+                  _DigestReminder(onOpenFriends: onOpenFriends),
+                  const _UpiCaptureCard(),
+                  const SizedBox(height: 14),
+                  const _CycleChart(),
+                  const SectionHeader('Recent'),
+                  const _RecentActivity(),
+                ],
+              ),
+              const Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: CommandBar(),
+              ),
+            ],
+          ),
+          _ when burn.hasError || balance.hasError => _LedgerError(
+            error: burn.error ?? balance.error!,
+          ),
+          _ => const Center(child: CircularProgressIndicator()),
+        },
+      ),
+    );
+  }
+}
+
+/// Greeting, cycle badge and the circular-reveal theme toggle.
+class _Header extends ConsumerWidget {
+  const _Header({required this.daysLeft});
+
+  final int daysLeft;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sb = context.sb;
+    final owner = ref.watch(budgetSettingsProvider).value?.ownerName?.trim();
+    final hasName = owner != null && owner.isNotEmpty;
+    return Row(
+      children: [
+        FriendAvatar(hasName ? owner : 'SplitBurn', size: 40),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                hasName ? 'Hi, ${owner.split(' ').first}' : 'SplitBurn',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: SbType.title.copyWith(color: sb.textPrimary),
+              ),
+              Text(
+                'Net-share budget',
+                style: SbType.chip.copyWith(
+                  fontSize: 13,
+                  color: sb.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        SbTag(
+          '${daysLeft}d left',
+          key: const Key('cycle-badge'),
+          color: sb.safeMint,
+        ),
+        const SizedBox(width: 6),
+        const ThemeToggleButton(),
+      ],
+    );
+  }
+}
+
+/// Sun / moon button: flips the theme with a circular reveal from itself.
+class ThemeToggleButton extends ConsumerWidget {
+  const ThemeToggleButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dark = context.isDark;
+    return IconButton(
+      key: const Key('theme-toggle'),
+      tooltip: dark ? 'Light mode' : 'Dark mode',
+      onPressed: () {
+        final box = context.findRenderObject()! as RenderBox;
+        final center = box.localToGlobal(box.size.center(Offset.zero));
+        ThemeReveal.of(context).run(
+          center,
+          () => ref
+              .read(appThemeModeProvider.notifier)
+              .toggleFrom(Theme.of(context).brightness),
+        );
+      },
+      icon: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        transitionBuilder: (child, a) =>
+            RotationTransition(turns: a, child: child),
+        child: Icon(
+          dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+          key: ValueKey(dark),
+          color: context.sb.textSecondary,
         ),
       ),
-      body: switch ((metrics, liquid)) {
-        (final m?, final b?) => ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-          children: [
-            const CommandBar(),
-            const SizedBox(height: 18),
-            SafeToSpendCard(metrics: m, symbol: symbol),
-            const SizedBox(height: 14),
-            LiquidBalancePill(balance: b, symbol: symbol),
-            const SizedBox(height: 18),
-            SurvivalMeter(metrics: m, symbol: symbol),
-            _DigestReminder(onOpenFriends: onOpenFriends),
-            const _UpiCaptureCard(),
-            const SizedBox(height: 18),
-            const _CycleChart(),
-            const SectionHeader('Recent'),
-            const _RecentActivity(),
-          ],
-        ),
-        _ when burn.hasError || balance.hasError => _LedgerError(
-          error: burn.error ?? balance.error!,
-        ),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
     );
   }
 }
@@ -130,25 +217,21 @@ class _DigestReminder extends ConsumerWidget {
     }
     return Padding(
       padding: const EdgeInsets.only(top: 18),
-      child: BrutalCard(
-        color: SbColors.lime,
-        shadowColor: SbColors.paper,
+      child: BentoCard(
         onTap: onOpenFriends,
+        borderColor: context.sb.owedToMe.withValues(alpha: 0.35),
         child: Row(
           children: [
-            const Icon(Icons.mark_email_unread_outlined, color: SbColors.ink),
+            Icon(Icons.mark_email_unread_outlined, color: context.sb.owedToMe),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'New month: send ${owing.length} ${owing.length == 1 ? 'friend' : 'friends'} '
                 'one tidy digest instead of chasing every small amount.',
-                style: const TextStyle(
-                  color: SbColors.ink,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
-            const Icon(Icons.chevron_right, color: SbColors.ink),
+            Icon(Icons.chevron_right_rounded, color: context.sb.textMuted),
           ],
         ),
       ),
@@ -168,21 +251,23 @@ class _UpiCaptureCard extends ConsumerWidget {
     if (enabled != false) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 18),
-      child: BrutalCard(
-        shadowColor: SbColors.owed,
+      child: BentoCard(
         onTap: () async {
           await bridge.openUpiCaptureSettings();
           ref.invalidate(upiCaptureEnabledProvider);
         },
-        child: const Row(
+        child: Row(
           children: [
-            Icon(Icons.notifications_active_outlined, color: SbColors.owed),
-            SizedBox(width: 12),
-            Expanded(
+            Icon(
+              Icons.notifications_active_outlined,
+              color: context.sb.safeMint,
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
               child: Text(
                 'Turn on UPI auto-capture: GPay, PhonePe, Paytm and bank alerts '
                 'get logged for you, even when the app is closed.',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -207,11 +292,19 @@ class _RecentActivity extends ConsumerWidget {
         icon: Icons.receipt_long_outlined,
       );
     }
-    return Column(
-      children: [
-        for (final t in transactions)
-          _TransactionTile(t: t, today: today, symbol: symbol),
-      ],
+    return BentoCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      child: Column(
+        children: [
+          for (var i = 0; i < transactions.length; i++)
+            _TransactionTile(
+              t: transactions[i],
+              today: today,
+              symbol: symbol,
+              last: i == transactions.length - 1,
+            ),
+        ],
+      ),
     );
   }
 }
@@ -221,35 +314,39 @@ class _TransactionTile extends StatelessWidget {
     required this.t,
     required this.today,
     required this.symbol,
+    required this.last,
   });
 
   final LedgerTransaction t;
   final DateTime today;
   final String symbol;
+  final bool last;
 
   @override
   Widget build(BuildContext context) {
+    final sb = context.sb;
     final tag = t.source.tag;
     final shared = Money.toMinor(t.totalPaid) != Money.toMinor(t.myShare);
+    final color = t.category.colorIn(sb);
     return InkWell(
       onTap: () => showTransactionSheet(context, t.id),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-        decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: SbColors.raised, width: 1.5),
-          ),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          border: last
+              ? null
+              : Border(bottom: BorderSide(color: sb.hairlineBorder)),
         ),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: t.category.color,
-                border: Border.all(color: SbColors.outline, width: 2),
+                color: color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(t.category.icon, color: SbColors.ink, size: 20),
+              child: Icon(t.category.icon, color: color, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -258,16 +355,22 @@ class _TransactionTile extends StatelessWidget {
                 children: [
                   Text(
                     t.merchant,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: SbType.body.copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      Text(
-                        '${relativeDay(t.createdAt, today)}${t.paidByMe ? '' : ' · friend paid'}',
-                        style: const TextStyle(
-                          color: SbColors.muted,
-                          fontSize: 12,
+                      Flexible(
+                        child: Text(
+                          '${relativeDay(t.createdAt, today)}${t.paidByMe ? '' : ' · friend paid'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: sb.textSecondary,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                       if (tag != null) ...[
@@ -275,8 +378,8 @@ class _TransactionTile extends StatelessWidget {
                         SbTag(
                           tag,
                           color: t.source == TxnSource.androidUpiAuto
-                              ? SbColors.owed
-                              : SbColors.paper,
+                              ? sb.safeMint
+                              : sb.info,
                         ),
                       ],
                     ],
@@ -284,20 +387,18 @@ class _TransactionTile extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   Money.format(Money.toMinor(t.myShare), symbol: symbol),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                  ),
+                  style: SbType.amount.copyWith(color: sb.textPrimary),
                 ),
                 if (shared)
                   Text(
                     'of ${Money.format(Money.toMinor(t.totalPaid), symbol: symbol)}',
-                    style: const TextStyle(color: SbColors.muted, fontSize: 12),
+                    style: TextStyle(color: sb.textMuted, fontSize: 12),
                   ),
               ],
             ),

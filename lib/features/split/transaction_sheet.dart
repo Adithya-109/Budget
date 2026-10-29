@@ -95,6 +95,8 @@ class TransactionSheet extends ConsumerWidget {
     }
     final dao = ref.read(ledgerDaoProvider);
     final tag = t.source.tag;
+    final sb = context.sb;
+    final color = t.category.colorIn(sb);
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       child: Column(
@@ -102,27 +104,32 @@ class TransactionSheet extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Icon(t.category.icon, color: t.category.color, size: 28),
-              const SizedBox(width: 10),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(t.category.icon, color: color, size: 24),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   t.merchant,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                  ),
+                  style: SbType.title.copyWith(color: sb.textPrimary),
                 ),
               ),
-              if (tag != null) SbTag(tag),
+              if (tag != null) SbTag(tag, color: sb.info),
             ],
           ),
           const SizedBox(height: 4),
           Text(
             '${t.category.code} · ${DateFormat('EEE d MMM, h:mm a').format(t.createdAt)}',
-            style: const TextStyle(color: SbColors.muted),
+            style: TextStyle(color: sb.textSecondary),
           ),
           const SizedBox(height: 16),
-          BrutalCard(
+          BentoCard(
             child: Column(
               children: [
                 _Line(
@@ -152,12 +159,17 @@ class TransactionSheet extends ConsumerWidget {
                   s.direction == SplitDirection.owesMe
                       ? '${s.friendName} owes you ${fmt(Money.toMinor(s.amount))}'
                       : 'You owe ${s.friendName} ${fmt(Money.toMinor(s.amount))}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                secondary: FriendAvatar(
+                  s.friendName,
+                  size: 34,
+                  dimmed: s.isSettled,
                 ),
                 subtitle: Text(
                   s.isSettled ? 'Settled' : 'Open',
                   style: TextStyle(
-                    color: s.isSettled ? SbColors.owed : SbColors.muted,
+                    color: s.isSettled ? sb.owedToMe : sb.textSecondary,
                   ),
                 ),
                 value: s.isSettled,
@@ -171,7 +183,7 @@ class TransactionSheet extends ConsumerWidget {
               Expanded(
                 child: FilledButton.icon(
                   icon: const Icon(Icons.call_split),
-                  label: Text(splits.isEmpty ? 'SPLIT IT' : 'RE-SPLIT'),
+                  label: Text(splits.isEmpty ? 'Split it' : 'Re-split'),
                   onPressed: () async {
                     final saved = await showSplitSheet(
                       context,
@@ -185,7 +197,7 @@ class TransactionSheet extends ConsumerWidget {
               const SizedBox(width: 10),
               OutlinedButton.icon(
                 icon: const Icon(Icons.delete_outline),
-                label: const Text('DELETE'),
+                label: const Text('Delete'),
                 onPressed: () => _delete(context, ref, t),
               ),
             ],
@@ -210,14 +222,19 @@ class _Line extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(label, style: const TextStyle(color: SbColors.muted)),
+            child: Text(
+              label,
+              style: TextStyle(color: context.sb.textSecondary),
+            ),
           ),
           Text(
             value,
-            style: TextStyle(
-              fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
-              fontSize: strong ? 20 : 15,
-            ),
+            style: strong
+                ? SbType.balance.copyWith(
+                    fontSize: 22,
+                    color: context.sb.textPrimary,
+                  )
+                : SbType.amount.copyWith(color: context.sb.textPrimary),
           ),
         ],
       ),

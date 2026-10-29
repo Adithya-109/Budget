@@ -7,6 +7,8 @@ import '../../core/providers/engine_providers.dart';
 import '../../core/providers/native_providers.dart';
 import '../../ui/prompts.dart';
 import '../../ui/theme.dart';
+import '../../ui/theme_mode.dart';
+import '../../ui/theme_reveal.dart';
 import '../../ui/widgets.dart';
 import '../bills/trial_reminders.dart';
 import '../ledger/settle_links.dart';
@@ -27,10 +29,12 @@ class SettingsScreen extends ConsumerWidget {
     final bridge = ref.watch(nativeBridgeProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('SETTINGS')),
+      appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
+          const SectionHeader('Appearance'),
+          const _ThemePicker(),
           const SectionHeader('Your money'),
           ListTile(
             key: const Key('setting-allowance'),
@@ -39,7 +43,10 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: const Text('Pocket money, stipend or salary per cycle'),
             trailing: Text(
               fmt(Money.toMinor(config.monthlyAllowance)),
-              style: SbType.figure,
+              style: SbType.balance.copyWith(
+                fontSize: 20,
+                color: context.sb.textPrimary,
+              ),
             ),
             onTap: () async {
               final v = await _askMoney(
@@ -83,18 +90,21 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SectionHeader('Bank balance'),
-          BrutalCard(
+          BentoCard(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
                   fmt(balance.bankBalanceMinor),
-                  style: SbType.figure.copyWith(fontSize: 28),
+                  style: SbType.balance.copyWith(
+                    fontSize: 28,
+                    color: context.sb.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'What SplitBurn thinks is in your bank',
-                  style: TextStyle(color: SbColors.muted),
+                  style: TextStyle(color: context.sb.textSecondary),
                 ),
                 const SizedBox(height: 12),
                 FilledButton(
@@ -105,7 +115,7 @@ class SettingsScreen extends ConsumerWidget {
                     balance.bankBalanceMinor,
                     symbol,
                   ),
-                  child: const Text('MATCH MY BANK APP'),
+                  child: const Text('Match my bank app'),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton(
@@ -119,7 +129,7 @@ class SettingsScreen extends ConsumerWidget {
                     );
                     if (v != null && v > 0) await budget.recordIncome(v);
                   },
-                  child: const Text('MONEY CAME IN'),
+                  child: const Text('Money came in'),
                 ),
               ],
             ),
@@ -292,7 +302,7 @@ class _ReconcileDialogState extends State<_ReconcileDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('MATCH')),
+        FilledButton(onPressed: _submit, child: const Text('Match')),
       ],
     );
   }
@@ -362,7 +372,7 @@ class _OwnerFieldsState extends ConsumerState<_OwnerFields> {
         OutlinedButton(
           key: const Key('owner-save'),
           onPressed: _save,
-          child: const Text('SAVE'),
+          child: const Text('Save'),
         ),
       ],
     );
@@ -377,7 +387,7 @@ class _UpiCaptureTile extends ConsumerWidget {
       contentPadding: EdgeInsets.zero,
       leading: Icon(
         Icons.notifications_active_outlined,
-        color: enabled ? SbColors.owed : SbColors.muted,
+        color: enabled ? context.sb.owedToMe : context.sb.textMuted,
       ),
       title: const Text('UPI auto-capture'),
       subtitle: Text(
@@ -386,11 +396,50 @@ class _UpiCaptureTile extends ConsumerWidget {
             : 'Off: grant notification access so payments log themselves.',
       ),
       trailing: enabled
-          ? const SbTag('ON', color: SbColors.owed)
-          : const SbTag('OFF'),
+          ? SbTag('On', color: context.sb.owedToMe)
+          : const SbTag('Off'),
       onTap: () async {
         await ref.read(nativeBridgeProvider).openUpiCaptureSettings();
         ref.invalidate(upiCaptureEnabledProvider);
+      },
+    );
+  }
+}
+
+/// System / Light / Dark, switched with the circular reveal.
+class _ThemePicker extends ConsumerWidget {
+  const _ThemePicker();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(appThemeModeProvider);
+    return SegmentedButton<ThemeMode>(
+      key: const Key('theme-mode'),
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(
+          value: ThemeMode.system,
+          icon: Icon(Icons.brightness_auto_outlined),
+          label: Text('System'),
+        ),
+        ButtonSegment(
+          value: ThemeMode.light,
+          icon: Icon(Icons.light_mode_outlined),
+          label: Text('Light'),
+        ),
+        ButtonSegment(
+          value: ThemeMode.dark,
+          icon: Icon(Icons.dark_mode_outlined),
+          label: Text('Dark'),
+        ),
+      ],
+      selected: {mode},
+      onSelectionChanged: (s) {
+        final box = context.findRenderObject()! as RenderBox;
+        ThemeReveal.of(context).run(
+          box.localToGlobal(box.size.center(Offset.zero)),
+          () => ref.read(appThemeModeProvider.notifier).set(s.single),
+        );
       },
     );
   }

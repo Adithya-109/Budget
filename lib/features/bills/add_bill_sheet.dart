@@ -168,8 +168,8 @@ class _AddBillSheetState extends ConsumerState<AddBillSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'ADD A BILL',
-              style: Theme.of(context).appBarTheme.titleTextStyle,
+              'Add a bill',
+              style: SbType.title.copyWith(color: context.sb.textPrimary),
             ),
             const SizedBox(height: 14),
             SegmentedButton<bool>(
@@ -236,9 +236,9 @@ class _AddBillSheetState extends ConsumerState<AddBillSheet> {
                 ),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'You\'ll get a high-priority alert 48h and 12h before it charges.',
-                style: TextStyle(color: SbColors.muted),
+                style: TextStyle(color: context.sb.textSecondary),
               ),
             ] else ...[
               const SectionHeader('Split with'),
@@ -264,14 +264,14 @@ class _AddBillSheetState extends ConsumerState<AddBillSheet> {
                     ? 'Just you.'
                     : 'Each month you pay ${fmt(_amountMinor)}; your share is ${fmt(_myShareMinor)} '
                           'and ${_flatmates.map((f) => f.name).join(', ')} get billed the rest automatically.',
-                style: const TextStyle(color: SbColors.muted),
+                style: TextStyle(color: context.sb.textSecondary),
               ),
             ],
             const SizedBox(height: 18),
             FilledButton(
               key: const Key('bill-save'),
               onPressed: _saving ? null : _save,
-              child: Text(_isTrial ? 'SHIELD THIS TRIAL' : 'ADD BILL'),
+              child: Text(_isTrial ? 'Shield this trial' : 'Add bill'),
             ),
           ],
         ),

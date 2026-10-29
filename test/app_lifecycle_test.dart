@@ -8,7 +8,7 @@ void main() {
     'root widget re-reads the ledger when the app returns to the foreground',
     (tester) async {
       final app = await AppHarness.start(tester);
-      expect(app.text('true-spendable'), 'TRUE ₹15,000');
+      expect(app.text('true-spendable'), '₹15,000');
       final limitBefore = app.text('safe-today');
 
       // An iOS App Intent logs ₹450 while the app sits in the background.
@@ -27,18 +27,14 @@ void main() {
         );
       });
       await app.settle();
-      expect(
-        app.text('true-spendable'),
-        'TRUE ₹15,000',
-        reason: 'not synced yet',
-      );
+      expect(app.text('true-spendable'), '₹15,000', reason: 'not synced yet');
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await app.settle(() => app.text('true-spendable') == 'TRUE ₹14,550');
+      await app.settle(() => app.text('true-spendable') == '₹14,550');
 
-      expect(app.text('true-spendable'), 'TRUE ₹14,550');
+      expect(app.text('true-spendable'), '₹14,550');
       await app.settle(() => app.text('safe-today') != limitBefore);
       expect(app.text('safe-today'), isNot(limitBefore));
       await tester.scrollUntilVisible(

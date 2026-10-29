@@ -103,78 +103,80 @@ class _CommandBarState extends ConsumerState<CommandBar> {
 
   @override
   Widget build(BuildContext context) {
+    final sb = context.sb;
     final parsed = _parsed;
     final symbol = ref.watch(currencySymbolProvider);
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          key: const Key('command-bar'),
-          controller: _controller,
-          focusNode: _focus,
-          textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
-            hintText: 'Spent 450 on Domino\'s with Rahul and Priya',
-            prefixIcon: Icon(Icons.bolt, color: SbColors.lime),
-          ),
-          onChanged: (text) =>
-              setState(() => _parsed = ExpensePhraseParser.parse(text)),
-          onSubmitted: (_) => _log(),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.bottomCenter,
+          child: parsed == null
+              ? const SizedBox(width: double.infinity)
+              : Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _Preview(
+                    parsed: parsed,
+                    description: _describe(parsed, symbol),
+                    symbol: symbol,
+                    saving: _saving,
+                    onLog: _log,
+                    onEdit: _editSplit,
+                  ),
+                ),
         ),
-        if (parsed != null) ...[
-          const SizedBox(height: 10),
-          BrutalCard(
-            key: const Key('command-preview'),
-            shadowColor: parsed.category.color,
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(parsed.category.icon, color: parsed.category.color),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        parsed.merchant,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      Money.format(parsed.amountMinor, symbol: symbol),
-                      style: SbType.figure,
-                    ),
-                  ],
+        GlassCard(
+          radius: SbRadius.pill,
+          padding: const EdgeInsets.fromLTRB(16, 4, 6, 4),
+          child: Row(
+            children: [
+              Icon(Icons.bolt_rounded, color: sb.safeMint),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  key: const Key('command-bar'),
+                  controller: _controller,
+                  focusNode: _focus,
+                  textInputAction: TextInputAction.done,
+                  style: SbType.body.copyWith(color: sb.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText: "450 on Domino's with Rahul and Priya",
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onChanged: (text) =>
+                      setState(() => _parsed = ExpensePhraseParser.parse(text)),
+                  onSubmitted: (_) => _log(),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  _describe(parsed, symbol),
-                  style: const TextStyle(color: SbColors.muted),
+              ),
+              IconButton(
+                key: const Key('command-scan'),
+                tooltip: 'Scan a receipt',
+                onPressed: () => showSplitSheet(
+                  context,
+                  initial: const SplitForm(mode: SplitMode.receipt),
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton(
-                        key: const Key('command-log'),
-                        onPressed: _saving ? null : _log,
-                        child: const Text('LOG IT'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    OutlinedButton(
-                      onPressed: _editSplit,
-                      child: const Text('EDIT SPLIT'),
-                    ),
-                  ],
+                icon: Icon(
+                  Icons.document_scanner_outlined,
+                  color: sb.textSecondary,
                 ),
-              ],
-            ),
+              ),
+              IconButton.filled(
+                key: const Key('add-expense'),
+                tooltip: 'Split a bill',
+                onPressed: () => showSplitSheet(context),
+                icon: const Icon(Icons.add_rounded),
+              ),
+            ],
           ),
-        ],
+        ),
       ],
     );
   }
@@ -211,6 +213,7 @@ class CategoryPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sb = context.sb;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -220,18 +223,98 @@ class CategoryPicker extends StatelessWidget {
             avatar: Icon(
               c.icon,
               size: 16,
-              color: c == value ? SbColors.ink : c.color,
+              color: c == value ? sb.onAccent : c.colorIn(sb),
             ),
             label: Text(c.code),
             selected: c == value,
-            showCheckmark: false,
-            labelStyle: TextStyle(
-              color: c == value ? SbColors.ink : SbColors.paper,
-              fontWeight: FontWeight.w800,
-            ),
             onSelected: (_) => onChanged(c),
           ),
       ],
+    );
+  }
+}
+
+/// What the phrase will log, with Log it / Edit split.
+class _Preview extends StatelessWidget {
+  const _Preview({
+    required this.parsed,
+    required this.description,
+    required this.symbol,
+    required this.saving,
+    required this.onLog,
+    required this.onEdit,
+  });
+
+  final ParsedExpense parsed;
+  final String description;
+  final String symbol;
+  final bool saving;
+  final VoidCallback onLog;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final sb = context.sb;
+    final color = parsed.category.colorIn(sb);
+    return BentoCard(
+      key: const Key('command-preview'),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(parsed.category.icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  parsed.merchant,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SbType.body.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              Text(
+                Money.format(parsed.amountMinor, symbol: symbol),
+                style: SbType.balance.copyWith(
+                  fontSize: 20,
+                  color: sb.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(description, style: TextStyle(color: sb.textSecondary)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  key: const Key('command-log'),
+                  onPressed: saving ? null : onLog,
+                  child: const Text('Log it'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton(
+                onPressed: onEdit,
+                child: const Text('Edit split'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

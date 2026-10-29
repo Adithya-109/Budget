@@ -100,7 +100,7 @@ class FriendDetailScreen extends ConsumerWidget {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('YES, SETTLED'),
+            child: const Text('Yes, settled'),
           ),
         ],
       ),
@@ -126,51 +126,68 @@ class FriendDetailScreen extends ConsumerWidget {
     final handle = balance?.friend.paymentHandle;
     final net = balance?.netMinor ?? 0;
     final dao = ref.read(ledgerDaoProvider);
+    final sb = context.sb;
+    final netColor = net > 0
+        ? sb.owedToMe
+        : net < 0
+        ? sb.iOwe
+        : sb.textSecondary;
 
     return Scaffold(
-      appBar: AppBar(title: Text(friend.name.toUpperCase())),
+      appBar: AppBar(title: Text(friend.name)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
-          BrutalCard(
-            shadowColor: net > 0
-                ? SbColors.owed
-                : net < 0
-                ? SbColors.magma
-                : SbColors.lime,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          BentoCard(
+            child: Row(
               children: [
-                SbLabel(
-                  net > 0
-                      ? 'Owes you'
-                      : net < 0
-                      ? 'You owe'
-                      : 'All square',
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  fmt(net.abs()),
-                  key: const Key('friend-net'),
-                  style: SbType.hero.copyWith(fontSize: 40),
-                ),
-                const SizedBox(height: 10),
-                InkWell(
-                  onTap: () => _editHandle(context, ref, handle),
-                  child: Row(
+                FriendAvatar(friend.name, size: 56),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.alternate_email,
-                        size: 16,
-                        color: SbColors.muted,
+                      SbLabel(
+                        net > 0
+                            ? 'Owes you'
+                            : net < 0
+                            ? 'You owe'
+                            : 'All square',
+                        color: netColor,
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        handle ?? 'Add UPI ID / Venmo',
-                        style: TextStyle(
-                          color: handle == null
-                              ? SbColors.lime
-                              : SbColors.paper,
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          fmt(net.abs()),
+                          key: const Key('friend-net'),
+                          style: SbType.hero.copyWith(color: sb.textPrimary),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () => _editHandle(context, ref, handle),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.alternate_email_rounded,
+                              size: 16,
+                              color: sb.textMuted,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                handle ?? 'Add UPI ID / Venmo',
+                                overflow: TextOverflow.ellipsis,
+                                style: SbType.receipt.copyWith(
+                                  color: handle == null
+                                      ? sb.accent
+                                      : sb.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -192,12 +209,12 @@ class FriendDetailScreen extends ConsumerWidget {
                     : NudgeTone.polite,
               ),
               icon: const Icon(Icons.mark_chat_unread_outlined),
-              label: const Text('NUDGE (NICELY)'),
+              label: const Text('Nudge (nicely)'),
             ),
             const SizedBox(height: 10),
             OutlinedButton(
               onPressed: () => _settleAll(context, ref, fmt),
-              child: Text('THEY PAID ME ${fmt(net)}'),
+              child: Text('They paid me ${fmt(net)}'),
             ),
           ],
           if (net < 0) ...[
@@ -213,18 +230,18 @@ class FriendDetailScreen extends ConsumerWidget {
                 ),
                 icon: const Icon(Icons.bolt),
                 label: Text(
-                  'PAY ${fmt(-net)} WITH ${SettleLinks.railOf(handle) == PaymentRail.upi ? 'UPI' : 'VENMO'}',
+                  'Pay ${fmt(-net)} via ${SettleLinks.railOf(handle) == PaymentRail.upi ? 'UPI' : 'Venmo'}',
                 ),
               )
             else
-              const Text(
+              Text(
                 'Add their UPI ID or Venmo handle above to pay in one tap.',
-                style: TextStyle(color: SbColors.muted),
+                style: TextStyle(color: sb.textSecondary),
               ),
             const SizedBox(height: 10),
             OutlinedButton(
               onPressed: () => _settleAll(context, ref, fmt),
-              child: Text('I PAID ${fmt(-net)} ALREADY'),
+              child: Text('I paid ${fmt(-net)} already'),
             ),
           ],
           const SectionHeader('Open IOUs'),
@@ -240,20 +257,19 @@ class FriendDetailScreen extends ConsumerWidget {
               value: false,
               title: Text(
                 s.merchant,
-                style: const TextStyle(fontWeight: FontWeight.w700),
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               subtitle: Text(
                 '${relativeDay(s.loggedAt, today)} · '
                 '${s.direction == SplitDirection.owesMe ? 'owes you' : 'you owe'}',
-                style: const TextStyle(color: SbColors.muted),
+                style: TextStyle(color: sb.textSecondary),
               ),
               secondary: Text(
                 fmt(s.amountMinor),
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
+                style: SbType.amount.copyWith(
                   color: s.direction == SplitDirection.owesMe
-                      ? SbColors.owed
-                      : SbColors.magma,
+                      ? sb.owedToMe
+                      : sb.iOwe,
                 ),
               ),
               onChanged: (_) =>

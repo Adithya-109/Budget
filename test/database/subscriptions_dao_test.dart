@@ -49,6 +49,68 @@ void main() {
     expect(await subs.chargeDue(now: DateTime(2026, 10, 20)), isEmpty);
   });
 
+  test('away flatmate: their share is spread over everyone home', () async {
+    final subs = db.subscriptionsDao;
+    // ₹1,000 Wi-Fi: me ₹250, Kabir, Meera and Zoya ₹250 each.
+    final id = await subs.addSubscription(
+      name: 'Wi-Fi',
+      amountMinor: 100000,
+      myShareMinor: 25000,
+      billingDate: DateTime(2026, 11, 1, 9),
+      splitGroup: const [
+        ...flatmates,
+        SplitGroupMember(friendId: 'f-3', friendName: 'Zoya'),
+      ],
+    );
+    await subs.setMemberAway(id, 'f-2', away: true);
+    final sub = (await subs.byId(id))!;
+    expect(
+      sub.autoSplitGroupJson!.singleWhere((m) => m.friendId == 'f-2').away,
+      isTrue,
+      reason: 'persisted in the JSON',
+    );
+
+    // Meera's ₹250 split 3 ways: ₹83.34 for me (rounding), ₹83.33 each.
+    final split = SubscriptionsDao.chargeSplitFor(sub);
+    expect(split.myShareMinor, 25000 + 8334);
+    expect(
+      {for (final e in split.friendShares.entries) e.key.name: e.value},
+      {'Kabir': 25000 + 8333, 'Zoya': 25000 + 8333},
+    );
+
+    await subs.chargeDue(now: DateTime(2026, 11, 1, 10));
+    final s = await db.ledgerDao.financialSummary();
+    expect(s.totalPersonalSpendMinor, 33334);
+    expect(s.owedToMeMinor, 100000 - 33334);
+    expect(
+      (await db.ledgerDao.openSplits()).map((o) => o.friend.name).toSet(),
+      {'Kabir', 'Zoya'},
+      reason: 'nobody bills the away flatmate',
+    );
+
+    // Back from break: equal shares again.
+    await subs.setMemberAway(id, 'f-2', away: false);
+    final back = SubscriptionsDao.chargeSplitFor((await subs.byId(id))!);
+    expect(back.myShareMinor, 25000);
+    expect(back.friendShares.values, everyElement(25000));
+  });
+
+  test('everyone away: the user covers the whole bill', () async {
+    final subs = db.subscriptionsDao;
+    final id = await subs.addSubscription(
+      name: 'Cook',
+      amountMinor: 30000,
+      myShareMinor: 10000,
+      billingDate: DateTime(2026, 11, 1, 9),
+      splitGroup: flatmates,
+    );
+    await subs.setMemberAway(id, 'f-1', away: true);
+    await subs.setMemberAway(id, 'f-2', away: true);
+    final split = SubscriptionsDao.chargeSplitFor((await subs.byId(id))!);
+    expect(split.myShareMinor, 30000);
+    expect(split.friendShares, isEmpty);
+  });
+
   test('cancelled trial goes to the graveyard and never charges', () async {
     final subs = db.subscriptionsDao;
     final id = await subs.addSubscription(

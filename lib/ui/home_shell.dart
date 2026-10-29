@@ -4,6 +4,7 @@ import '../features/bills/bills_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
 import '../features/ledger/ledger_screen.dart';
 import '../features/settings/settings_screen.dart';
+import 'theme.dart';
 
 /// Bottom navigation between the four tabs. Tabs keep their state.
 class HomeShell extends StatefulWidget {
@@ -29,8 +30,8 @@ class _HomeShellState extends State<HomeShell> {
         ],
       ),
       bottomNavigationBar: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Color(0xFFF7F5EC), width: 2)),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: context.sb.hairlineBorder)),
         ),
         child: NavigationBar(
           selectedIndex: _tab,
@@ -38,17 +39,23 @@ class _HomeShellState extends State<HomeShell> {
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.local_fire_department_outlined),
-              label: 'TODAY',
+              selectedIcon: Icon(Icons.local_fire_department_rounded),
+              label: 'Today',
             ),
             NavigationDestination(
-              icon: Icon(Icons.group_outlined),
-              label: 'FRIENDS',
+              icon: Icon(Icons.people_outline_rounded),
+              selectedIcon: Icon(Icons.people_rounded),
+              label: 'Friends',
             ),
             NavigationDestination(
               icon: Icon(Icons.event_repeat_outlined),
-              label: 'BILLS',
+              selectedIcon: Icon(Icons.event_repeat_rounded),
+              label: 'Bills',
             ),
-            NavigationDestination(icon: Icon(Icons.tune), label: 'SETTINGS'),
+            NavigationDestination(
+              icon: Icon(Icons.tune_rounded),
+              label: 'Settings',
+            ),
           ],
         ),
       ),

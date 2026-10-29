@@ -80,6 +80,30 @@ class SubscriptionsDao extends DatabaseAccessor<AppDatabase>
   Future<Subscription?> byId(String id) =>
       (select(subscriptions)..where((s) => s.id.equals(id))).getSingleOrNull();
 
+  /// Marks a flatmate away on semester break (or back home). Their share of
+  /// the next charges is redistributed by [chargeSplitFor].
+  Future<void> setMemberAway(
+    String subscriptionId,
+    String friendId, {
+    required bool away,
+  }) {
+    return transaction(() async {
+      final sub = await byId(subscriptionId);
+      final group = sub?.autoSplitGroupJson;
+      if (group == null) return;
+      await (update(
+        subscriptions,
+      )..where((s) => s.id.equals(subscriptionId))).write(
+        SubscriptionsCompanion(
+          autoSplitGroupJson: Value([
+            for (final m in group)
+              m.friendId == friendId ? m.copyWith(away: away) : m,
+          ]),
+        ),
+      );
+    });
+  }
+
   /// Cancelled before it could charge: into the graveyard.
   Future<void> cancel(String id) async {
     await (update(subscriptions)..where((s) => s.id.equals(id))).write(
@@ -138,24 +162,58 @@ class SubscriptionsDao extends DatabaseAccessor<AppDatabase>
 
   Future<String> _logCharge(Subscription sub, DateTime chargeDate) {
     final amountMinor = Money.toMinor(sub.amount);
-    final myShareMinor = Money.toMinor(sub.myShare);
-    final shares = friendSharesFor(
-      amountMinor: amountMinor,
-      myShareMinor: myShareMinor,
-      group: sub.autoSplitGroupJson ?? const [],
-    );
+    final split = chargeSplitFor(sub);
     return attachedDatabase.ledgerDao.logExpense(
       ExpenseDraft(
         merchant: sub.name,
         totalPaidMinor: amountMinor,
-        myShareMinor: myShareMinor,
+        myShareMinor: split.myShareMinor,
         payer: const PaidByMe(),
         category: TxnCategory.utilities,
-        friendShares: shares,
+        friendShares: split.friendShares,
         source: TxnSource.subscription,
         createdAt: chargeDate,
       ),
     );
+  }
+
+  /// Who pays what for one charge of [sub], with away flatmates' shares
+  /// spread equally over the user and everyone home (the user absorbs the
+  /// rounding). If everyone is away the user covers the whole bill.
+  static ({int myShareMinor, Map<FriendRef, int> friendShares}) chargeSplitFor(
+    Subscription sub,
+  ) {
+    final group = sub.autoSplitGroupJson ?? const <SplitGroupMember>[];
+    final base = friendSharesFor(
+      amountMinor: Money.toMinor(sub.amount),
+      myShareMinor: Money.toMinor(sub.myShare),
+      group: group,
+    );
+    final awayIds = {
+      for (final m in group)
+        if (m.away) m.friendId,
+    };
+    var mine = Money.toMinor(sub.myShare);
+    final home = <FriendRef, int>{};
+    var pool = 0;
+    base.forEach((friend, share) {
+      if (awayIds.contains(friend.id)) {
+        pool += share;
+      } else {
+        home[friend] = share;
+      }
+    });
+    if (pool > 0) {
+      final extra = SplitCalculator.equal<Participant>(pool, [
+        const Me(),
+        for (final f in home.keys) FriendParticipant(f),
+      ]);
+      mine += extra[const Me()]!;
+      for (final f in home.keys) {
+        home[f] = home[f]! + extra[FriendParticipant(f)]!;
+      }
+    }
+    return (myShareMinor: mine, friendShares: home);
   }
 
   /// Each flatmate's share of one charge. Throws if the bill does not add up.

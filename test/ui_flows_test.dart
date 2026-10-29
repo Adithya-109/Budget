@@ -39,7 +39,7 @@ void main() {
     expect(find.textContaining('split 3 ways · ₹150 each'), findsOneWidget);
 
     await app.tap(find.byKey(const Key('command-log')));
-    await app.settle(() => app.text('true-spendable') == 'TRUE ₹14,550');
+    await app.settle(() => app.text('true-spendable') == '₹14,550');
 
     final txns = await tester.runAsync(
       () => app.db.select(app.db.transactions).get(),
@@ -122,7 +122,7 @@ void main() {
     tester,
   ) async {
     final app = await AppHarness.start(tester, seed: _dinner);
-    await app.tap(_nav('FRIENDS'));
+    await app.tap(_nav('Friends'));
     await app.settle(
       () => find.byKey(const Key('friend-Rahul')).evaluate().isNotEmpty,
     );
@@ -139,9 +139,9 @@ void main() {
       reason: 'zero-install settle link',
     );
 
-    await app.tap(find.text('Meme card'));
-    expect(find.text('Survival Facts'), findsOneWidget);
-    await app.tap(find.text('Monthly'));
+    await app.tap(find.text('Broke meme'));
+    expect(find.text('Nutrition Facts'), findsOneWidget);
+    await app.tap(find.text('1st-of-month'));
     expect(find.text('OCTOBER TAB'), findsOneWidget);
     await app.dispose();
   });
@@ -150,9 +150,9 @@ void main() {
     tester,
   ) async {
     final app = await AppHarness.start(tester);
-    await app.tap(_nav('FRIENDS'));
+    await app.tap(_nav('Friends'));
     await app.tap(find.byKey(const Key('group-settle')));
-    expect(find.text('GROUP SETTLE-UP'), findsWidgets);
+    expect(find.text('Group settle-up'), findsWidgets);
     expect(
       find.text('Add amounts and who paid to see the transfers.'),
       findsOneWidget,
@@ -164,7 +164,7 @@ void main() {
     tester,
   ) async {
     final app = await AppHarness.start(tester);
-    await app.tap(_nav('BILLS'));
+    await app.tap(_nav('Bills'));
     await app.tap(find.byKey(const Key('add-bill')));
     await app.enter(find.byKey(const Key('bill-name')), 'Apple Music');
     await app.enter(find.byKey(const Key('bill-amount')), '119');
@@ -173,7 +173,7 @@ void main() {
       () => find.byKey(const Key('trial-Apple Music')).evaluate().isNotEmpty,
     );
     expect(app.reminders.scheduled, contains('Apple Music'));
-    expect(app.text('countdown-Apple Music'), startsWith('CHARGES IN'));
+    expect(app.text('countdown-Apple Music'), startsWith('Charges in'));
 
     await app.tap(find.byKey(const Key('buried-Apple Music')));
     await app.settle(
@@ -188,7 +188,7 @@ void main() {
     tester,
   ) async {
     final app = await AppHarness.start(tester);
-    await app.tap(_nav('SETTINGS'));
+    await app.tap(_nav('Settings'));
     await app.enter(find.byKey(const Key('owner-name')), 'Adithya');
     await app.enter(find.byKey(const Key('owner-handle')), 'not a handle');
     await app.tap(find.byKey(const Key('owner-save')));
@@ -200,7 +200,7 @@ void main() {
 
     await app.tap(find.byKey(const Key('reconcile')));
     await app.enter(find.byKey(const Key('reconcile-amount')), '14500');
-    await app.tap(find.text('MATCH'));
+    await app.tap(find.text('Match'));
     await app.settle(
       () => find.textContaining('untracked spending').evaluate().isNotEmpty,
     );

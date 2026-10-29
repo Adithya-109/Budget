@@ -62,33 +62,56 @@ struct BalanceProvider: TimelineProvider {
 
 // MARK: - Style
 
-private enum Palette {
-    static let ink = Color(red: 0.04, green: 0.04, blue: 0.06)
-    static let paper = Color(red: 0.97, green: 0.96, blue: 0.92)
-    static let lime = Color(red: 0.83, green: 1.0, blue: 0.23)
-    static let magma = Color(red: 1.0, green: 0.35, blue: 0.12)
-    static let survival = Color(red: 1.0, green: 0.18, blue: 0.33)
-    static let owed = Color(red: 0.24, green: 0.86, blue: 0.52)
-    static let muted = Color.white.opacity(0.6)
+/// DESIGN_SYSTEM.md tokens: Obsidian Matte (dark) / Warm Alabaster (light).
+/// Mirrors `SplitBurnTokens` in lib/ui/theme.dart.
+private struct Palette {
+    let dark: Bool
+
+    init(_ scheme: ColorScheme) { dark = scheme == .dark }
+
+    private static func hex(_ value: UInt32) -> Color {
+        Color(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255)
+    }
+
+    var canvas: Color { Self.hex(dark ? 0x0E1014 : 0xF7F5F0) }
+    var surface: Color { Self.hex(dark ? 0x1E222B : 0xF0EDE6) }
+    var textPrimary: Color { Self.hex(dark ? 0xF3F4F6 : 0x111317) }
+    var textSecondary: Color { Self.hex(dark ? 0x9CA3AF : 0x525866) }
+    var safeMint: Color { Self.hex(dark ? 0x34D399 : 0x059669) }
+    var survival: Color { Self.hex(dark ? 0xFB7185 : 0xE11D48) }
+    var survivalEnd: Color { Self.hex(dark ? 0xF97316 : 0xEA580C) }
+    var owed: Color { Self.hex(dark ? 0x4ADE80 : 0x16A34A) }
+    var iOwe: Color { Self.hex(dark ? 0xF87171 : 0xDC2626) }
+
+    /// Survival Mode paints the whole widget in the magma gradient.
+    func background(survival isSurvival: Bool) -> LinearGradient {
+        LinearGradient(
+            colors: isSurvival ? [survival, survivalEnd] : [canvas, canvas],
+            startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
 }
 
 private extension View {
     /// iOS 17 requires widgets to declare their background as a container
     /// background; older systems just paint it.
     @ViewBuilder
-    func widgetBackground(_ color: Color) -> some View {
+    func widgetBackground<Background: View>(_ background: Background) -> some View {
         if #available(iOS 17.0, *) {
-            containerBackground(for: .widget) { color }
+            containerBackground(for: .widget) { background }
         } else {
-            background(color)
+            self.background(background)
         }
     }
 
-    func brutalBox(_ fill: Color) -> some View {
-        padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(fill)
-            .overlay(Rectangle().stroke(Palette.ink, lineWidth: 2))
+    /// Tinted capsule badge ("+₹900 owed").
+    func pill(_ color: Color, onMagma: Bool) -> some View {
+        padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .foregroundColor(onMagma ? .white : color)
+            .background(Capsule().fill(onMagma ? Color.white.opacity(0.22) : color.opacity(0.16)))
     }
 }
 
@@ -98,6 +121,7 @@ private let dashboardURL = URL(string: "splitburn://dashboard")!
 
 struct BalanceWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.colorScheme) private var scheme
     let entry: BalanceEntry
 
     var body: some View {
@@ -113,68 +137,73 @@ struct BalanceWidgetEntryView: View {
 
     @ViewBuilder
     private func content(_ s: LedgerSnapshot, _ m: BurnRateMetrics) -> some View {
+        let palette = Palette(scheme)
         switch family {
         case .accessoryInline:
-            AccessoryInlineView(snapshot: s, metrics: m).widgetBackground(.clear)
+            AccessoryInlineView(snapshot: s, metrics: m).widgetBackground(Color.clear)
         case .accessoryCircular:
-            AccessoryCircularView(snapshot: s, metrics: m).widgetBackground(.clear)
+            AccessoryCircularView(snapshot: s, metrics: m).widgetBackground(Color.clear)
         case .accessoryRectangular:
-            AccessoryRectangularView(snapshot: s, metrics: m).widgetBackground(.clear)
+            AccessoryRectangularView(snapshot: s, metrics: m).widgetBackground(Color.clear)
         case .systemMedium:
-            MediumView(snapshot: s, metrics: m)
-                .widgetBackground(m.isSurvivalMode ? Palette.survival : Palette.ink)
+            MediumView(snapshot: s, metrics: m, palette: palette)
+                .widgetBackground(palette.background(survival: m.isSurvivalMode))
         default:
-            SmallView(snapshot: s, metrics: m)
-                .widgetBackground(m.isSurvivalMode ? Palette.survival : Palette.ink)
+            SmallView(snapshot: s, metrics: m, palette: palette)
+                .widgetBackground(palette.background(survival: m.isSurvivalMode))
         }
     }
 
     @ViewBuilder
     private func message(_ text: String) -> some View {
+        let palette = Palette(scheme)
         switch family {
         case .accessoryInline, .accessoryCircular, .accessoryRectangular:
-            Text("SplitBurn").font(.headline).widgetBackground(.clear)
+            Text("SplitBurn").font(.headline).widgetBackground(Color.clear)
         default:
             VStack(alignment: .leading, spacing: 6) {
-                Text("SPLITBURN").font(.system(size: 12, weight: .black, design: .monospaced))
-                    .foregroundColor(Palette.lime)
-                Text(text).font(.system(size: 13, weight: .semibold)).foregroundColor(.white)
+                Text("SplitBurn").font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundColor(palette.safeMint)
+                Text(text).font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(palette.textPrimary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .widgetBackground(Palette.ink)
+            .widgetBackground(palette.canvas)
         }
     }
 }
 
-/// Safe-to-spend hero with the True Liquid Balance pill.
+/// Safe-to-spend hero with the True Liquid Balance line.
 private struct SmallView: View {
     let snapshot: LedgerSnapshot
     let metrics: BurnRateMetrics
+    let palette: Palette
 
     var body: some View {
         let symbol = snapshot.currencySymbol
+        let magma = metrics.isSurvivalMode
         VStack(alignment: .leading, spacing: 4) {
-            Text(metrics.isSurvivalMode ? "SURVIVAL MODE" : "SAFE TODAY")
-                .font(.system(size: 11, weight: .black, design: .monospaced))
-                .foregroundColor(metrics.isSurvivalMode ? Palette.ink : Palette.lime)
+            Text(magma ? "SURVIVAL MODE" : "SAFE TODAY")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(0.8)
+                .foregroundColor(magma ? .white : palette.safeMint)
             Text(Money.compact(metrics.leftTodayMinor, symbol: symbol))
-                .font(.system(size: 34, weight: .black, design: .rounded))
+                .font(.system(size: 32, weight: .heavy, design: .rounded))
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
-                .foregroundColor(metrics.isOverToday ? Palette.magma : .white)
+                .foregroundColor(
+                    magma ? .white : metrics.isOverToday ? palette.iOwe : palette.textPrimary)
             Text("of \(Money.compact(metrics.dailyLimitMinor, symbol: symbol)) limit")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Palette.muted)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(magma ? .white.opacity(0.85) : palette.textSecondary)
             Spacer(minLength: 0)
-            Text("TRUE \(Money.compact(metrics.trueSpendableMinor, symbol: symbol))")
-                .font(.system(size: 11, weight: .heavy, design: .monospaced))
-                .foregroundColor(Palette.ink)
-                .brutalBox(Palette.paper)
+            Text("True \(Money.compact(metrics.trueSpendableMinor, symbol: symbol))")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundColor(magma ? .white : palette.textPrimary)
             if metrics.owedToMeMinor > 0 {
                 Text("+\(Money.compact(metrics.owedToMeMinor, symbol: symbol)) owed")
-                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
-                    .foregroundColor(Palette.ink)
-                    .brutalBox(Palette.owed)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .pill(palette.owed, onMagma: magma)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -184,11 +213,13 @@ private struct SmallView: View {
 private struct MediumView: View {
     let snapshot: LedgerSnapshot
     let metrics: BurnRateMetrics
+    let palette: Palette
 
     var body: some View {
         let symbol = snapshot.currencySymbol
+        let magma = metrics.isSurvivalMode
         HStack(alignment: .top, spacing: 12) {
-            SmallView(snapshot: snapshot, metrics: metrics)
+            SmallView(snapshot: snapshot, metrics: metrics, palette: palette)
             VStack(alignment: .leading, spacing: 6) {
                 row("You owe", Money.format(snapshot.iOweMinor, symbol: symbol))
                 row("Bank", Money.format(snapshot.bankBalanceMinor, symbol: symbol))
@@ -197,9 +228,8 @@ private struct MediumView: View {
                 }
                 Spacer(minLength: 0)
                 Text(brokeLine)
-                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
-                    .foregroundColor(Palette.ink)
-                    .brutalBox(metrics.isSurvivalMode ? Palette.paper : Palette.lime)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .pill(palette.safeMint, onMagma: magma)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -207,23 +237,25 @@ private struct MediumView: View {
 
     private var brokeLine: String {
         guard let days = metrics.daysUntilBroke, let date = metrics.brokeDate else {
-            return "NO BURN THIS WEEK"
+            return "No burn this week"
         }
         if metrics.isSurvivalMode {
-            let day = date.formatted(.dateTime.day().month(.abbreviated)).uppercased()
-            return "\(snapshot.currencySymbol)0 BY \(day)"
+            let day = date.formatted(.dateTime.day().month(.abbreviated))
+            return "\(snapshot.currencySymbol)0 by \(day)"
         }
-        return "\(days) DAYS OF CASH"
+        return "\(days) days of cash"
     }
 
     private func row(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let magma = metrics.isSurvivalMode
+        return VStack(alignment: .leading, spacing: 0) {
             Text(label.uppercased())
-                .font(.system(size: 9, weight: .black, design: .monospaced))
-                .foregroundColor(Palette.muted)
+                .font(.system(size: 9, weight: .bold))
+                .tracking(0.6)
+                .foregroundColor(magma ? .white.opacity(0.8) : palette.textSecondary)
             Text(value)
                 .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+                .foregroundColor(magma ? .white : palette.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }

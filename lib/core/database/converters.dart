@@ -47,6 +47,7 @@ class SplitGroupMember {
     required this.friendName,
     this.paymentHandle,
     this.share,
+    this.away = false,
   });
 
   factory SplitGroupMember.fromJson(Map<String, Object?> json) {
@@ -56,6 +57,7 @@ class SplitGroupMember {
       friendName: json['friend_name']! as String,
       paymentHandle: json['payment_handle'] as String?,
       share: share == null ? null : (share as num).toDouble(),
+      away: json['away'] == true,
     );
   }
 
@@ -66,11 +68,24 @@ class SplitGroupMember {
   /// Fixed share in major units, or `null` for an equal split.
   final double? share;
 
+  /// Away on semester break: skipped when the bill is charged, and their
+  /// share is spread over everyone who is home (the user included).
+  final bool away;
+
+  SplitGroupMember copyWith({bool? away}) => SplitGroupMember(
+    friendId: friendId,
+    friendName: friendName,
+    paymentHandle: paymentHandle,
+    share: share,
+    away: away ?? this.away,
+  );
+
   Map<String, Object?> toJson() => {
     'friend_id': friendId,
     'friend_name': friendName,
     if (paymentHandle != null) 'payment_handle': paymentHandle,
     if (share != null) 'share': share,
+    if (away) 'away': true,
   };
 
   @override
@@ -79,10 +94,12 @@ class SplitGroupMember {
       other.friendId == friendId &&
       other.friendName == friendName &&
       other.paymentHandle == paymentHandle &&
-      other.share == share;
+      other.share == share &&
+      other.away == away;
 
   @override
-  int get hashCode => Object.hash(friendId, friendName, paymentHandle, share);
+  int get hashCode =>
+      Object.hash(friendId, friendName, paymentHandle, share, away);
 }
 
 class SplitGroupConverter

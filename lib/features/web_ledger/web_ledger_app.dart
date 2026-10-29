@@ -28,7 +28,8 @@ class WebLedgerApp extends StatelessWidget {
     return MaterialApp(
       title: 'SplitBurn',
       debugShowCheckedModeBanner: false,
-      theme: buildSplitBurnTheme(),
+      theme: buildSplitBurnTheme(Brightness.light),
+      darkTheme: buildSplitBurnTheme(Brightness.dark),
       // One route per link: don't stack "/" and "/l" under a deep link.
       onGenerateInitialRoutes: (name) => [_route(name)],
       onGenerateRoute: (settings) => _route(settings.name),
@@ -51,7 +52,15 @@ class WebLedgerScreen extends StatelessWidget {
       final p => _decode(p),
     };
     return Scaffold(
-      appBar: AppBar(title: const Text('SPLITBURN')),
+      appBar: AppBar(
+        title: const Text('SplitBurn'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: SbTag('Guest · zero-install', color: context.sb.nudgeViolet),
+          ),
+        ],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
@@ -80,19 +89,22 @@ class _Message extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(24),
-      child: BrutalCard(
+      child: BentoCard(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               title,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              style: SbType.title.copyWith(
+                fontSize: 20,
+                color: context.sb.textPrimary,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               body,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: SbColors.muted),
+              style: TextStyle(color: context.sb.textSecondary),
             ),
           ],
         ),
@@ -120,50 +132,105 @@ class _Ledger extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sb = context.sb;
     final handle = ledger.payeeHandle;
     final rail = SettleLinks.railOf(handle);
     final total = ledger.totalMinor;
+    final settle = switch (rail) {
+      PaymentRail.upi => (
+        SettleLinks.upi(
+          payeeVpa: handle!,
+          payeeName: ledger.payeeName,
+          amountMinor: total,
+        ),
+        'UPI',
+      ),
+      PaymentRail.venmo => (
+        SettleLinks.venmo(handle: handle!, amountMinor: total),
+        'Venmo',
+      ),
+      null => null,
+    };
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        BrutalCard(
+        Text(
+          'Web ledger',
+          style: SbType.title.copyWith(fontSize: 28, color: sb.textPrimary),
+        ),
+        Text(
+          'Nothing to install · nothing to sign up for',
+          style: TextStyle(color: sb.textSecondary),
+        ),
+        const SizedBox(height: 16),
+        BentoCard(
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SbLabel(ledger.title, color: SbColors.lime),
-              const SizedBox(height: 8),
-              Text(
-                _fmt(total),
-                key: const Key('web-total'),
-                style: SbType.hero,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'to ${ledger.payeeName}',
-                style: const TextStyle(color: SbColors.muted),
+              Row(
+                children: [
+                  FriendAvatar(ledger.payeeName, size: 36),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      ledger.title,
+                      style: SbType.body.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: sb.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 14),
+              const SbLabel('Your share'),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _fmt(total),
+                  key: const Key('web-total'),
+                  style: SbType.hero.copyWith(color: sb.textPrimary),
+                ),
+              ),
+              Text(
+                'to ${ledger.payeeName}',
+                style: TextStyle(color: sb.textSecondary),
+              ),
+              const SizedBox(height: 14),
+              Divider(color: sb.hairlineBorder),
               for (final l in ledger.lines)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Row(
                     children: [
-                      SizedBox(
-                        width: 48,
-                        child: Text(
-                          '${l.date.day}/${l.date.month}',
-                          style: const TextStyle(color: SbColors.muted),
+                      Container(
+                        width: 7,
+                        height: 7,
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          color: sb.info,
+                          shape: BoxShape.circle,
                         ),
                       ),
                       Expanded(
                         child: Text(
                           l.label,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: sb.textPrimary,
+                          ),
                         ),
                       ),
                       Text(
+                        '${l.date.day}/${l.date.month}',
+                        style: SbType.receipt.copyWith(color: sb.textMuted),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
                         _fmt(l.amountMinor),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        style: SbType.amount.copyWith(color: sb.textPrimary),
                       ),
                     ],
                   ),
@@ -172,35 +239,17 @@ class _Ledger extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        if (rail == PaymentRail.upi)
-          FilledButton.icon(
+        if (settle case (final link, final railName))
+          _PayButton(
             key: const Key('settle-now'),
-            onPressed: () => _open(
-              context,
-              SettleLinks.upi(
-                payeeVpa: handle!,
-                payeeName: ledger.payeeName,
-                amountMinor: total,
-              ),
-            ),
-            icon: const Icon(Icons.bolt),
-            label: Text('SETTLE NOW · ${_fmt(total)} VIA UPI'),
-          )
-        else if (rail == PaymentRail.venmo)
-          FilledButton.icon(
-            key: const Key('settle-now'),
-            onPressed: () => _open(
-              context,
-              SettleLinks.venmo(handle: handle!, amountMinor: total),
-            ),
-            icon: const Icon(Icons.bolt),
-            label: Text('SETTLE NOW · ${_fmt(total)} ON VENMO'),
+            label: 'Pay ${_fmt(total)} via $railName',
+            onPressed: () => _open(context, link),
           )
         else
           Text(
             'Ask ${ledger.payeeName} for their UPI ID or Venmo to settle.',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: SbColors.muted),
+            style: TextStyle(color: sb.textSecondary),
           ),
         if (handle != null) ...[
           const SizedBox(height: 10),
@@ -209,17 +258,66 @@ class _Ledger extends StatelessWidget {
               await Clipboard.setData(ClipboardData(text: handle));
               if (context.mounted) showSnack(context, 'Copied $handle');
             },
-            icon: const Icon(Icons.copy),
+            icon: const Icon(Icons.copy_rounded),
             label: Text(handle),
           ),
         ],
         const SizedBox(height: 24),
-        const Text(
-          'Shared with SplitBurn · nothing to install',
+        Text(
+          'Shared with SplitBurn',
           textAlign: TextAlign.center,
-          style: TextStyle(color: SbColors.muted, fontSize: 12),
+          style: TextStyle(color: sb.textMuted, fontSize: 12),
         ),
       ],
+    );
+  }
+}
+
+/// Dark pill with a gradient rim: the one action on the page.
+class _PayButton extends StatelessWidget {
+  const _PayButton({super.key, required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final sb = context.sb;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(SbRadius.pill),
+        gradient: LinearGradient(
+          colors: [sb.safeMint, sb.info, sb.nudgeViolet, sb.survivalMagma],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Material(
+          color: const Color(0xFF15161A),
+          borderRadius: BorderRadius.circular(SbRadius.pill),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(SbRadius.pill),
+            onTap: onPressed,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.bolt_rounded, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: SbType.body.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

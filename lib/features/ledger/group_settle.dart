@@ -24,7 +24,7 @@ class GroupSettlement {
     this.paidMinor,
     this.shareMinor,
     this.transfers,
-    this.rawDebtCount,
+    this.rawDebts,
   );
 
   /// People are keyed by name (the user is whatever key the caller picks).
@@ -50,7 +50,7 @@ class GroupSettlement {
       paid,
       share,
       DebtSimplifier.simplify(debts),
-      debts.length,
+      List.unmodifiable(debts),
     );
   }
 
@@ -67,6 +67,8 @@ class GroupSettlement {
       if (t.from == person || t.to == person) t,
   ];
 
-  /// "Who owes whom" edges before simplification (to show what was saved).
-  final int rawDebtCount;
+  /// "Who owes whom" edges before simplification (one per bill and person).
+  final List<Debt<String>> rawDebts;
+
+  int get rawDebtCount => rawDebts.length;
 }

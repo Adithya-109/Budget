@@ -23,9 +23,13 @@ class AppHarness {
     WidgetTester tester, {
     DateTime? now,
     Future<void> Function(AppDatabase db)? seed,
+    Brightness brightness = Brightness.light,
   }) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    // The app follows the system theme until the user picks one.
+    tester.platformDispatcher.platformBrightnessTestValue = brightness;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
     final db = openTestDatabase();
     final harness = AppHarness(tester, db);
     if (seed != null) await tester.runAsync(() => seed(db));
@@ -68,15 +72,35 @@ class AppHarness {
     return (inner.evaluate().first.widget as Text).data;
   }
 
-  Future<void> tap(Finder finder) async {
+  /// Scrolls the visible vertical list until [finder] is built, then into
+  /// view (lazy lists don't build rows below the fold).
+  Future<void> reveal(Finder finder) async {
+    if (finder.evaluate().isEmpty) {
+      final lists = find
+          .byWidgetPredicate(
+            (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+          )
+          .hitTestable();
+      // Pin the list: re-running hitTestable mid-scroll can lose it.
+      final list = lists.evaluate().first;
+      await tester.scrollUntilVisible(
+        finder,
+        250,
+        scrollable: find.byElementPredicate((e) => identical(e, list)),
+      );
+    }
     await tester.ensureVisible(finder);
+  }
+
+  Future<void> tap(Finder finder) async {
+    await reveal(finder);
     await tester.pump();
     await tester.tap(finder);
     await settle();
   }
 
   Future<void> enter(Finder finder, String value) async {
-    await tester.ensureVisible(finder);
+    await reveal(finder);
     await tester.enterText(finder, value);
     await settle();
   }

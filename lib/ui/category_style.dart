@@ -13,13 +13,14 @@ extension CategoryStyle on TxnCategory {
     TxnCategory.other => Icons.receipt_long_outlined,
   };
 
-  Color get color => switch (this) {
-    TxnCategory.food => SbColors.magma,
-    TxnCategory.groceries => SbColors.owed,
-    TxnCategory.transit => SbColors.sky,
-    TxnCategory.utilities => SbColors.lime,
-    TxnCategory.fun => const Color(0xFFC792EA),
-    TxnCategory.other => SbColors.paper,
+  /// Category hue from the theme's tokens, so it reads in both modes.
+  Color colorIn(SplitBurnTokens t) => switch (this) {
+    TxnCategory.food => t.survivalMagmaEnd,
+    TxnCategory.groceries => t.owedToMe,
+    TxnCategory.transit => t.info,
+    TxnCategory.utilities => t.trialAmber,
+    TxnCategory.fun => t.nudgeViolet,
+    TxnCategory.other => t.textSecondary,
   };
 }
 

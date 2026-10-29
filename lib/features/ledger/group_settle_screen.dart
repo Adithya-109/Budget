@@ -11,6 +11,7 @@ import '../../ui/prompts.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../friends/friend_directory.dart';
+import 'debt_graph.dart';
 import 'group_settle.dart';
 
 const _you = 'You';
@@ -43,6 +44,7 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
   final _people = <String>[_you];
   final _bills = <_BillDraft>[];
   bool _saving = false;
+  bool _simplify = true;
 
   @override
   void initState() {
@@ -149,9 +151,10 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
     final settlement = _compute();
     final involvesMe =
         settlement.paidBy(_you) > 0 || settlement.shareOf(_you) > 0;
+    final sb = context.sb;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('GROUP SETTLE-UP')),
+      appBar: AppBar(title: const Text('Group settle-up')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
@@ -198,7 +201,7 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
               () => _bills.add(_BillDraft(payer: _you, sharedBy: {..._people})),
             ),
             icon: const Icon(Icons.add),
-            label: const Text('ADD BILL'),
+            label: const Text('Add bill'),
           ),
           const SectionHeader('Settle like this'),
           if (settlement.transfers.isEmpty)
@@ -207,32 +210,67 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
               icon: Icons.hub_outlined,
             )
           else
-            BrutalCard(
+            BentoCard(
               key: const Key('group-transfers'),
-              shadowColor: SbColors.owed,
+              padding: const EdgeInsets.fromLTRB(8, 12, 8, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (final t in settlement.transfers)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TransferLabel(from: t.from, to: t.to),
-                          ),
-                          Text(
-                            fmt(t.amountMinor),
-                            style: const TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                        ],
-                      ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilterChip(
+                      key: const Key('group-simplify'),
+                      label: Text(_simplify ? 'Simplified' : 'Raw IOUs'),
+                      selected: _simplify,
+                      onSelected: (v) => setState(() => _simplify = v),
                     ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${settlement.rawDebtCount} IOUs squashed into ${settlement.transfers.length} '
-                    '${settlement.transfers.length == 1 ? 'transfer' : 'transfers'}.',
-                    style: const TextStyle(color: SbColors.muted),
+                  ),
+                  DebtGraphView(
+                    people: [
+                      for (final p in _people)
+                        if (settlement.paidBy(p) > 0 ||
+                            settlement.shareOf(p) > 0)
+                          p,
+                    ],
+                    rawDebts: DebtGraphView.mergePairs(settlement.rawDebts),
+                    simplifiedDebts: settlement.transfers,
+                    simplified: _simplify,
+                    symbol: symbol,
+                    self: _you,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Column(
+                      children: [
+                        for (final t in settlement.transfers)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 5),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TransferLabel(from: t.from, to: t.to),
+                                ),
+                                Text(
+                                  fmt(t.amountMinor),
+                                  style: SbType.amount.copyWith(
+                                    color: t.to == _you
+                                        ? sb.owedToMe
+                                        : t.from == _you
+                                        ? sb.iOwe
+                                        : sb.textPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${settlement.rawDebtCount} IOUs squashed into ${settlement.transfers.length} '
+                          '${settlement.transfers.length == 1 ? 'transfer' : 'transfers'}.',
+                          style: TextStyle(color: sb.textSecondary),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -248,7 +286,7 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
                           ShareParams(text: _summary(settlement, fmt)),
                         ),
                   icon: const Icon(Icons.ios_share),
-                  label: const Text('SHARE'),
+                  label: const Text('Share'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -257,7 +295,7 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
                   onPressed: !involvesMe || _saving
                       ? null
                       : () => _record(settlement),
-                  child: const Text('ADD MY PART'),
+                  child: const Text('Add my part'),
                 ),
               ),
             ],
@@ -268,7 +306,7 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
               child: Text(
                 'You paid ${fmt(settlement.paidBy(_you))}; your share is ${fmt(settlement.shareOf(_you))}. '
                 'Only your share counts as spending.',
-                style: const TextStyle(color: SbColors.muted),
+                style: TextStyle(color: sb.textSecondary),
               ),
             ),
         ],
@@ -280,9 +318,8 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
     final b = _bills[i];
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: BrutalCard(
-        shadowColor: SbColors.sky,
-        padding: const EdgeInsets.all(12),
+      child: BentoCard(
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -334,12 +371,9 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
               children: [
                 for (final p in _people)
                   ChoiceChip(
+                    avatar: FriendAvatar(p, size: 22),
                     label: Text(p),
                     selected: b.payer == p,
-                    showCheckmark: false,
-                    labelStyle: TextStyle(
-                      color: b.payer == p ? SbColors.ink : SbColors.paper,
-                    ),
                     onSelected: (_) => setState(() => b.payer = p),
                   ),
               ],
@@ -355,11 +389,6 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
                   FilterChip(
                     label: Text(p),
                     selected: b.sharedBy.contains(p),
-                    labelStyle: TextStyle(
-                      color: b.sharedBy.contains(p)
-                          ? SbColors.ink
-                          : SbColors.paper,
-                    ),
                     onSelected: (on) => setState(
                       () => b.sharedBy = on
                           ? {...b.sharedBy, p}

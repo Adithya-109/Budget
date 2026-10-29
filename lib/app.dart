@@ -7,6 +7,8 @@ import 'core/sync/ledger_sync.dart';
 import 'features/bills/trial_reminders.dart';
 import 'ui/home_shell.dart';
 import 'ui/theme.dart';
+import 'ui/theme_mode.dart';
+import 'ui/theme_reveal.dart';
 
 /// Root widget. Owns the foreground resume sync (CLAUDE.md §2 rule 3).
 class SplitBurnApp extends ConsumerStatefulWidget {
@@ -78,8 +80,12 @@ class _SplitBurnAppState extends ConsumerState<SplitBurnApp>
     return MaterialApp(
       title: 'SplitBurn',
       debugShowCheckedModeBanner: false,
-      // Dark-first by design: the Neobrutalist palette is the brand.
-      theme: buildSplitBurnTheme(),
+      theme: buildSplitBurnTheme(Brightness.light),
+      darkTheme: buildSplitBurnTheme(Brightness.dark),
+      themeMode: ref.watch(appThemeModeProvider),
+      // ThemeReveal animates switches; a cross-fade underneath would smear.
+      themeAnimationDuration: Duration.zero,
+      builder: (context, child) => ThemeReveal(child: child!),
       home: const HomeShell(),
     );
   }

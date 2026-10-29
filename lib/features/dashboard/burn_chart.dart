@@ -24,21 +24,21 @@ class BurnChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sb = context.sb;
     final maxSpend = days.fold<int>(
       evenPaceMinor,
       (m, d) => d.personalSpendMinor > m ? d.personalSpendMinor : m,
     );
     final top = maxSpend <= 0 ? 100.0 : maxSpend * 1.15 / 100;
     final barWidth = days.length > 25 ? 5.0 : 8.0;
-    return BrutalCard(
-      shadowColor: SbColors.sky,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+    return BentoCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const SbLabel('This cycle', color: SbColors.sky),
+              const SbLabel('This cycle'),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -46,7 +46,7 @@ class BurnChart extends StatelessWidget {
                   textAlign: TextAlign.end,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: SbColors.muted, fontSize: 12),
+                  style: TextStyle(color: sb.textSecondary, fontSize: 12),
                 ),
               ),
             ],
@@ -63,20 +63,15 @@ class BurnChart extends StatelessWidget {
                 gridData: const FlGridData(show: false),
                 borderData: FlBorderData(
                   show: true,
-                  border: const Border(
-                    bottom: BorderSide(color: SbColors.outline, width: 2),
-                  ),
+                  border: Border(bottom: BorderSide(color: sb.hairlineBorder)),
                 ),
                 barTouchData: BarTouchData(
                   touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (_) => SbColors.paper,
+                    getTooltipColor: (_) => sb.textPrimary,
                     getTooltipItem: (group, _, rod, _) => BarTooltipItem(
                       '${days[group.x].day.day}/${days[group.x].day.month}\n'
                       '${Money.format(days[group.x].personalSpendMinor, symbol: symbol)}',
-                      const TextStyle(
-                        color: SbColors.ink,
-                        fontWeight: FontWeight.w800,
-                      ),
+                      TextStyle(color: sb.canvas, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
@@ -84,8 +79,8 @@ class BurnChart extends StatelessWidget {
                   horizontalLines: [
                     HorizontalLine(
                       y: evenPaceMinor / 100,
-                      color: SbColors.lime,
-                      strokeWidth: 2,
+                      color: sb.safeMint.withValues(alpha: 0.8),
+                      strokeWidth: 1.5,
                       dashArray: const [6, 4],
                     ),
                   ],
@@ -98,12 +93,12 @@ class BurnChart extends StatelessWidget {
                         BarChartRodData(
                           toY: days[i].personalSpendMinor / 100,
                           width: barWidth,
-                          borderRadius: BorderRadius.zero,
+                          borderRadius: BorderRadius.circular(barWidth / 2),
                           color: days[i].day == today
-                              ? SbColors.lime
+                              ? sb.safeMint
                               : days[i].personalSpendMinor > evenPaceMinor
-                              ? SbColors.magma
-                              : SbColors.paper,
+                              ? sb.survivalMagma
+                              : sb.textMuted.withValues(alpha: 0.55),
                         ),
                       ],
                     ),
