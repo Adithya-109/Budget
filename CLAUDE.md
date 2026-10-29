@@ -177,7 +177,7 @@ Output full, production-ready, modular code without placeholders or `// TODO` st
 
 ## Phase status
 - [x] Phase 1: Project scaffolding & shared SQLite core
-- [x] Phase 2: Native iOS & Android bridges (Kotlin compile-checked + JVM-tested; Swift not compiled yet, see below)
+- [x] Phase 2: Native iOS & Android bridges (CI compiles every Swift target for iPhone and runs RunnerTests and the Kotlin JVM tests; first green run 2026-10-29)
 - [x] Phase 3: Core engines (burn rate, Days-Until-Broke, True Liquid Balance reconciler, resume sync)
 - [x] Phase 4: UI screens (dashboard, split & receipt scanner, social ledger & Nudge Bot, group settle-up, bills & Trial Shield, settings, zero-install web viewer)
 - [x] Phase 5: Verification & testing (property / fuzz tests, DST time zones, `tool/test_all.sh`, CI incl. the first Swift build)
@@ -300,7 +300,7 @@ Rules are documented on the Dart class. `test/fixtures/expense_phrases.json` is 
   - `burn_rate_test.dart`: 5,000 random snapshots checking the engine invariants, recalibration monotonicity and exact pacing.
   - `budget_cycle_test.dart`: every day of 2026–27 for all 31 reset days.
 - Calendar code must survive `TZ=America/New_York` (25 h days), `America/Santiago` (DST at midnight: a day can start at 01:00), `Australia/Lord_Howe` and `Asia/Kolkata`; `tool/test_all.sh` runs domain, provider and database tests in each. Never assume a day is 24 h or starts at hour 0.
-- `.github/workflows/ci.yml` runs `tool/test_all.sh` on Ubuntu (Chrome and Android SDK present) and `xcodebuild test -only-testing:RunnerTests` on macOS, which is the only place the Swift code is compiled.
+- `.github/workflows/ci.yml` runs `tool/test_all.sh` on Ubuntu (Chrome and Android SDK present, so the Kotlin tests run through Gradle) and, on macOS, compiles every Swift target for iPhone then runs RunnerTests on an x86_64 simulator. It is the only place Swift is compiled; Markdown-only pushes skip it.
 - A preview built in `build` must catch `ArgumentError` from `toDraft` (a friend-paid bill below one paisa per head gives the user no share); the Swift intent rejects the same case.
 - `test/ui_redesign_test.dart`: token contrast (WCAG), theme-mode persistence and the header / Settings switch, a dark-mode pass over every tab, the debt-graph Simplify collapse, the Nudge QR, the 48-hour shield banner and the flatmate away toggle.
 - `AppHarness.start(brightness:)` sets the platform brightness (the app follows the system by default). `tap` / `enter` scroll the visible list until a lazily built row exists (`reveal`). The test font is wider than real fonts, so a phone-width layout that passes tests has slack on devices; real-font screenshots come from a throwaway test that loads `assets/fonts/` with `FontLoader` (flutter_test draws shadows solid and can't run the aura shader, which falls back to a gradient).
