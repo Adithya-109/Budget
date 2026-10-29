@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:splitburn/domain/budget_cycle.dart';
@@ -82,6 +83,139 @@ void main() {
     expect(under.recalibrationDeltaMinor, 10000);
     expect(under.budgetLeftMinor, 150000);
   });
+
+  test('engine invariants hold for random snapshots and every reset day', () {
+    final rng = Random(7);
+    for (var i = 0; i < 5000; i++) {
+      final resetDay = 1 + rng.nextInt(31);
+      final today = DateTime(2026, 1 + rng.nextInt(24), 1 + rng.nextInt(31));
+      final cycle = BudgetCycle.containing(today, resetDay: resetDay);
+      LedgerSnapshot snap({int? spentToday, int? iOwe}) => LedgerSnapshot(
+        monthlyAllowanceMinor: rng.nextInt(5000000),
+        bankBalanceMinor: rng.nextInt(4000000) - 500000,
+        owedToMeMinor: rng.nextInt(200000),
+        iOweMinor: iOwe ?? rng.nextInt(300000),
+        spentBeforeTodayMinor: rng.nextInt(4000000),
+        spentTodayMinor: spentToday ?? rng.nextInt(300000),
+        last7DaysSpendMinor: rng.nextInt(10) == 0 ? 0 : rng.nextInt(2000000),
+        currencySymbol: '₹',
+        cycle: cycle,
+        today: DateTime(today.year, today.month, today.day),
+      );
+      final s = snap();
+      final m = BurnRateMetrics.fromSnapshot(s);
+      final reason = 'case $i: $cycle on $today';
+
+      expect(m.daysRemaining, inInclusiveRange(1, cycle.lengthInDays));
+      expect(m.dailyLimitMinor, greaterThanOrEqualTo(0), reason: reason);
+      // The limit never promises more than is left of the allowance.
+      expect(
+        m.dailyLimitMinor * m.daysRemaining,
+        lessThanOrEqualTo(
+          max(0, s.monthlyAllowanceMinor - s.spentBeforeTodayMinor),
+        ),
+        reason: reason,
+      );
+      expect(m.leftTodayMinor + s.spentTodayMinor, m.dailyLimitMinor);
+      expect(
+        m.tomorrowLimitMinor == null,
+        m.daysRemaining == 1,
+        reason: reason,
+      );
+      expect(m.trueSpendableMinor, s.bankBalanceMinor - s.iOweMinor);
+      if (m.daysUntilBroke == null) {
+        expect(m.avgDailyBurnMinor, 0, reason: reason);
+        expect(m.isSurvivalMode, isFalse, reason: reason);
+      } else {
+        expect(m.daysUntilBroke, greaterThanOrEqualTo(0));
+        // Survival Mode exactly when the money runs out inside this cycle.
+        expect(
+          m.isSurvivalMode,
+          m.brokeDate!.isBefore(cycle.end),
+          reason: reason,
+        );
+      }
+
+      // Recalibration: spending more today never raises tomorrow's limit,
+      // and never changes today's.
+      final more = BurnRateMetrics.fromSnapshot(
+        LedgerSnapshot(
+          monthlyAllowanceMinor: s.monthlyAllowanceMinor,
+          bankBalanceMinor: s.bankBalanceMinor,
+          owedToMeMinor: s.owedToMeMinor,
+          iOweMinor: s.iOweMinor,
+          spentBeforeTodayMinor: s.spentBeforeTodayMinor,
+          spentTodayMinor: s.spentTodayMinor + 1 + rng.nextInt(100000),
+          last7DaysSpendMinor: s.last7DaysSpendMinor,
+          currencySymbol: '₹',
+          cycle: s.cycle,
+          today: s.today,
+        ),
+      );
+      expect(more.dailyLimitMinor, m.dailyLimitMinor, reason: reason);
+      if (m.tomorrowLimitMinor != null) {
+        expect(
+          more.tomorrowLimitMinor,
+          lessThanOrEqualTo(m.tomorrowLimitMinor!),
+          reason: reason,
+        );
+      }
+
+      // Owing friends more never buys more days.
+      final owingMore = BurnRateMetrics.fromSnapshot(
+        LedgerSnapshot(
+          monthlyAllowanceMinor: s.monthlyAllowanceMinor,
+          bankBalanceMinor: s.bankBalanceMinor,
+          owedToMeMinor: s.owedToMeMinor,
+          iOweMinor: s.iOweMinor + rng.nextInt(100000),
+          spentBeforeTodayMinor: s.spentBeforeTodayMinor,
+          spentTodayMinor: s.spentTodayMinor,
+          last7DaysSpendMinor: s.last7DaysSpendMinor,
+          currencySymbol: '₹',
+          cycle: s.cycle,
+          today: s.today,
+        ),
+      );
+      if (m.daysUntilBroke != null) {
+        expect(owingMore.daysUntilBroke, lessThanOrEqualTo(m.daysUntilBroke!));
+      }
+    }
+  });
+
+  test(
+    'spending exactly the daily limit every day uses the allowance exactly',
+    () {
+      // Never "over today", and the last day's limit picks up every paisa the
+      // truncating division left behind.
+      for (final resetDay in [1, 10, 29, 31]) {
+        final cycle = BudgetCycle.containing(
+          DateTime(2026, 1, 15),
+          resetDay: resetDay,
+        );
+        const allowance = 1234567;
+        var spent = 0;
+        for (final day in cycle.days) {
+          final m = BurnRateMetrics.fromSnapshot(
+            LedgerSnapshot(
+              monthlyAllowanceMinor: allowance,
+              bankBalanceMinor: allowance - spent,
+              owedToMeMinor: 0,
+              iOweMinor: 0,
+              spentBeforeTodayMinor: spent,
+              spentTodayMinor: 0,
+              last7DaysSpendMinor: 0,
+              currencySymbol: '₹',
+              cycle: cycle,
+              today: day,
+            ),
+          );
+          expect(m.isOverToday, isFalse);
+          spent += m.dailyLimitMinor;
+        }
+        expect(spent, allowance, reason: 'reset day $resetDay');
+      }
+    },
+  );
 
   test('true liquid balance', () {
     const balance = TrueLiquidBalance(

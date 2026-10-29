@@ -58,6 +58,27 @@ void main() {
   });
 
   testWidgets(
+    'command bar: a bill too small to split explains, never crashes',
+    (tester) async {
+      final app = await AppHarness.start(tester);
+      await app.enter(
+        find.byKey(const Key('command-bar')),
+        'Rahul paid 0.01 for chai with Priya',
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('no share for you'), findsOneWidget);
+
+      await app.tap(find.byKey(const Key('command-log')));
+      await app.settle();
+      final txns = await tester.runAsync(
+        () => app.db.select(app.db.transactions).get(),
+      );
+      expect(txns, isEmpty, reason: 'nothing logged');
+      await app.dispose();
+    },
+  );
+
+  testWidgets(
     'split sheet: equal split with a new friend, exact mode validation',
     (tester) async {
       final app = await AppHarness.start(tester);

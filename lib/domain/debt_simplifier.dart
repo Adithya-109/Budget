@@ -74,10 +74,53 @@ abstract final class DebtSimplifier {
   }
 
   /// The fewest transfers that leave everyone square.
+  ///
+  /// Above [exactLimit] the heuristic treats everyone as one group, which can
+  /// cost more transfers than people who never shared a bill need; each
+  /// connected sub-group is then also settled on its own and the shorter
+  /// answer wins, so the result never exceeds the original debt count.
   static List<Debt<K>> simplify<K>(
     Iterable<Debt<K>> debts, {
     int exactLimit = defaultExactLimit,
-  }) => settleBalances(netBalances(debts), exactLimit: exactLimit);
+  }) {
+    final list = debts.toList(growable: false);
+    final balances = netBalances(list);
+    final settled = settleBalances(balances, exactLimit: exactLimit);
+    if (balances.length <= exactLimit) return settled;
+
+    final bySubGroup = [
+      for (final group in _connectedGroups(list, balances))
+        ...settleBalances(group, exactLimit: exactLimit),
+    ];
+    return bySubGroup.length < settled.length ? bySubGroup : settled;
+  }
+
+  /// [balances] split by who is linked through [debts] (union-find).
+  static List<Map<K, int>> _connectedGroups<K>(
+    List<Debt<K>> debts,
+    Map<K, int> balances,
+  ) {
+    final parent = <K, K>{};
+    K root(K p) {
+      var r = parent.putIfAbsent(p, () => p);
+      while (r != parent[r]) {
+        r = parent[r] as K;
+      }
+      parent[p] = r;
+      return r;
+    }
+
+    for (final d in debts) {
+      if (d.from != d.to && d.amountMinor > 0) {
+        parent[root(d.from)] = root(d.to);
+      }
+    }
+    final groups = <K, Map<K, int>>{};
+    balances.forEach((person, amount) {
+      (groups[root(person)] ??= {})[person] = amount;
+    });
+    return groups.values.toList();
+  }
 
   /// Settles arbitrary net [balances] (must sum to zero).
   static List<Debt<K>> settleBalances<K>(

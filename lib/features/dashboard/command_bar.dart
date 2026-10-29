@@ -182,9 +182,15 @@ class _CommandBarState extends ConsumerState<CommandBar> {
   String _describe(ParsedExpense p, String symbol) {
     final category = p.category.code;
     if (p.friends.isEmpty) return '$category · just you';
-    final draft = p.toDraft(
-      resolveFriend: (n) => FriendRef(id: n, name: n),
-    );
+    final ExpenseDraft draft;
+    try {
+      draft = p.toDraft(
+        resolveFriend: (n) => FriendRef(id: n, name: n),
+      );
+    } on ArgumentError catch (e) {
+      // e.g. "Rahul paid 0.01 with Priya": too small to give you a share.
+      return '$category · ${e.message}';
+    }
     final share = Money.format(draft.myShareMinor, symbol: symbol);
     if (p.payer != null) return '$category · ${p.payer} paid · you owe $share';
     return '$category · split ${p.friends.length + 1} ways · $share each · '

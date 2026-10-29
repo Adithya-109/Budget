@@ -199,8 +199,18 @@ void main() {
       async.elapse(const Duration(minutes: 3));
       expect(days, [DateTime(2026, 10, 31), DateTime(2026, 11, 1)]);
 
-      async.elapse(const Duration(days: 1));
-      expect(days.last, DateTime(2026, 11, 2));
+      // 1 Nov is 25 h long where US DST ends (tool/test_all.sh runs this in
+      // America/New_York): the timer must aim at the real next midnight.
+      async.elapse(
+        DateTime(2026, 11, 1, 23, 59).difference(start.add(async.elapsed)),
+      );
+      expect(days.last, DateTime(2026, 11, 1));
+      async.elapse(const Duration(minutes: 2));
+      expect(days, [
+        DateTime(2026, 10, 31),
+        DateTime(2026, 11, 1),
+        DateTime(2026, 11, 2),
+      ]);
       sub.close();
       clock.dispose();
     });

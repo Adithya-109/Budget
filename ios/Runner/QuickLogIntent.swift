@@ -102,6 +102,11 @@ struct LogSplitExpenseIntent: AppIntent {
             payer: payer,
             category: categoryCode,
             source: spoken.isEmpty ? "APPLE_PAY_SHORTCUT" : "VOICE_INTENT")
+        // Same rule as Dart's ExpenseDraft: a friend-paid bill too small to
+        // give the user a share would only log a zero IOU.
+        if expense.payer != nil && expense.myShareMinor == 0 {
+            throw $amount.needsValueError("That's too small to split. How much was it?")
+        }
         let transactionId = try manager.logExpense(expense)
 
         WidgetCenter.shared.reloadTimelines(ofKind: SharedStorageConstants.widgetKind)

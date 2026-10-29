@@ -1,0 +1,59 @@
+# Every test suite on every push and pull request: Dart (VM, DST time zones,
+# Chrome), the Kotlin UPI parser, and the Swift parser / SQLite / burn-rate
+# parity tests in ios/RunnerTests.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dart-and-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+      - run: flutter pub get
+      # ubuntu-latest ships Chrome and an Android SDK (ANDROID_HOME).
+      - run: tool/test_all.sh
+        env:
+          CHROME_EXECUTABLE: google-chrome
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+      - run: flutter pub get
+      - run: flutter build ios --config-only --simulator --no-codesign
+      - name: RunnerTests (parser parity, SharedSQLiteManager, burn rate)
+        working-directory: ios
+        run: |
+          device="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [^(]+' | sed 's/ *$//')"
+          echo "Simulator: $device"
+          xcodebuild test \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -destination "platform=iOS Simulator,name=$device" \
+            -only-testing:RunnerTests \
+            CODE_SIGNING_ALLOWED=NO

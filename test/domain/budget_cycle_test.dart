@@ -52,6 +52,53 @@ void main() {
       expect(cycle.days.last, DateTime(2026, 2, 28));
     });
 
+    test(
+      'every day of two years, every reset day: cycles tile the calendar',
+      () {
+        // Run under several TZs by tool/test_all.sh so DST transitions (23 h /
+        // 25 h days) are covered: all counts must be calendar days.
+        for (var resetDay = 1; resetDay <= 31; resetDay++) {
+          var cycle = BudgetCycle.containing(
+            DateTime(2026),
+            resetDay: resetDay,
+          );
+          while (cycle.start.isBefore(DateTime(2028))) {
+            final days = cycle.days.toList();
+            expect(days.length, cycle.lengthInDays);
+            expect(cycle.lengthInDays, inInclusiveRange(28, 31));
+            expect(days.first, cycle.start);
+            for (var i = 0; i < days.length; i++) {
+              final d = days[i];
+              // The day's first instant (01:00 where DST starts at midnight,
+              // e.g. America/Santiago).
+              expect(
+                d.subtract(const Duration(minutes: 1)).day,
+                isNot(d.day),
+                reason: '$d starts its day',
+              );
+              expect(cycle.daysRemaining(d), days.length - i);
+              expect(
+                cycle.daysRemaining(d.add(const Duration(hours: 23))),
+                inInclusiveRange(days.length - i - 1, days.length - i),
+              );
+              expect(cycle.daysElapsed(d), i);
+              expect(BudgetCycle.containing(d, resetDay: resetDay), cycle);
+              expect(
+                BudgetCycle.containing(
+                  DateTime(d.year, d.month, d.day, 23, 59, 59),
+                  resetDay: resetDay,
+                ),
+                cycle,
+              );
+            }
+            expect(cycle.next.start, cycle.end);
+            expect(cycle.next.previous, cycle);
+            cycle = cycle.next;
+          }
+        }
+      },
+    );
+
     test('rejects invalid reset days', () {
       expect(
         () => BudgetCycle.containing(DateTime(2026), resetDay: 0),

@@ -42,5 +42,49 @@
       "tomorrow_limit": 0, "avg_daily_burn": 2000, "true_spendable": -10000,
       "days_until_broke": 0, "broke_date": "2026-10-15", "survival": true
     }
+  },
+  {
+    "name": "reset day 31 clamps to 28 Feb: first day of a 31-day cycle",
+    "today": "2026-02-28", "reset_day": 31,
+    "allowance": 1500000, "bank": 1500000, "owed_to_me": 0, "i_owe": 0,
+    "spent_before_today": 0, "spent_today": 0, "last_7_days": 70000,
+    "expect": {
+      "days_remaining": 31, "daily_limit": 48387, "left_today": 48387,
+      "tomorrow_limit": 50000, "avg_daily_burn": 10000, "true_spendable": 1500000,
+      "days_until_broke": 150, "broke_date": "2026-07-28", "survival": false
+    }
+  },
+  {
+    "name": "spending exactly the limit leaves tomorrow unchanged",
+    "today": "2026-10-01", "reset_day": 1,
+    "allowance": 3100000, "bank": 3000000, "owed_to_me": 25000, "i_owe": 0,
+    "spent_before_today": 0, "spent_today": 100000, "last_7_days": 100000,
+    "expect": {
+      "days_remaining": 31, "daily_limit": 100000, "left_today": 0,
+      "tomorrow_limit": 100000, "avg_daily_burn": 14285, "true_spendable": 3000000,
+      "days_until_broke": 210, "broke_date": "2027-04-29", "survival": false
+    }
+  },
+  {
+    "name": "broke exactly on the last day is not survival mode",
+    "today": "2026-10-22", "reset_day": 1,
+    "allowance": 1500000, "bank": 1050000, "owed_to_me": 0, "i_owe": 50000,
+    "spent_before_today": 1000000, "spent_today": 0, "last_7_days": 700000,
+    "expect": {
+      "days_remaining": 10, "daily_limit": 50000, "left_today": 50000,
+      "tomorrow_limit": 55555, "avg_daily_burn": 100000, "true_spendable": 1000000,
+      "days_until_broke": 10, "broke_date": "2026-11-01", "survival": false
+    }
+  },
+  {
+    "name": "one paisa short of that is survival mode",
+    "today": "2026-10-22", "reset_day": 1,
+    "allowance": 1500000, "bank": 1049999, "owed_to_me": 0, "i_owe": 50000,
+    "spent_before_today": 1000000, "spent_today": 0, "last_7_days": 700000,
+    "expect": {
+      "days_remaining": 10, "daily_limit": 50000, "left_today": 50000,
+      "tomorrow_limit": 55555, "avg_daily_burn": 100000, "true_spendable": 999999,
+      "days_until_broke": 9, "broke_date": "2026-10-31", "survival": true
+    }
   }
 ]

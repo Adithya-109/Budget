@@ -180,7 +180,7 @@ Output full, production-ready, modular code without placeholders or `// TODO` st
 - [x] Phase 2: Native iOS & Android bridges (Kotlin compile-checked + JVM-tested; Swift not compiled yet, see below)
 - [x] Phase 3: Core engines (burn rate, Days-Until-Broke, True Liquid Balance reconciler, resume sync)
 - [x] Phase 4: UI screens (dashboard, split & receipt scanner, social ledger & Nudge Bot, group settle-up, bills & Trial Shield, settings, zero-install web viewer)
-- [ ] Phase 5: Verification & testing (Phases 1–4 already ship tests for their own code, including phone-size widget flows)
+- [x] Phase 5: Verification & testing (property / fuzz tests, DST time zones, `tool/test_all.sh`, CI incl. the first Swift build)
 
 ## Git
 - Commit as the repository owner only. Do **not** add `Co-Authored-By`, `Claude-Session` or any other attribution trailers to commit messages.
@@ -188,6 +188,7 @@ Output full, production-ready, modular code without placeholders or `// TODO` st
 ## Commands
 ```bash
 flutter pub get
+tool/test_all.sh              # analyze, format, Dart suite, DST time zones, Chrome parity, Kotlin (skips what's missing; --quick = first three)
 dart run build_runner build   # regenerate *.drift.dart (Drift) and *.g.dart (Riverpod)
 flutter analyze
 flutter test
@@ -258,7 +259,7 @@ Rules are documented on the Dart class. `test/fixtures/expense_phrases.json` is 
 - `lib/core/database/` – Drift tables, converters, the `financial_summary_view`, DAOs (`LedgerDao`, `BudgetDao`, `SubscriptionsDao`), WAL connection setup, App Group path resolution.
 - `lib/core/money.dart` – minor-unit conversion and currency formatting.
 - `lib/core/providers/` – Riverpod (codegen) providers for the database and DAOs.
-- `lib/domain/` – pure Dart: `BudgetCycle`, `SplitCalculator` (equal / exact / percentage / itemized with proportional tax & tip), `ExpenseDraft`, `DebtSimplifier` (exact minimum-transaction settlement for groups up to 15 people, greedy min-cash-flow above that).
+- `lib/domain/` – pure Dart: `BudgetCycle`, `SplitCalculator` (equal / exact / percentage / itemized with proportional tax & tip), `ExpenseDraft`, `DebtSimplifier` (exact minimum-transaction settlement for groups up to 15 people, greedy min-cash-flow above that, also tried per connected sub-group so it never returns more transfers than the raw debts).
 
 ## Code map (Phase 2)
 - `ios/SharedStorage/` (Runner + widget): `SharedSQLiteManager.swift` (C-API SQLite, WAL, write contract, snapshot reads), `FinanceSchema.swift` (generated), `BudgetMath.swift` (cycle, burn-rate metrics, money formatting).
@@ -283,6 +284,14 @@ Rules are documented on the Dart class. `test/fixtures/expense_phrases.json` is 
 - Never draw arrows or emoji the layout depends on as text glyphs in mono labels; use icons (`TransferLabel`, `SbTag(icon:)`).
 
 ## Riverpod / testing notes
+- Phase 5 test map:
+  - `test/database/net_share_invariants_test.dart`: random log / settle / unsettle / settle-all / re-split / delete histories checked step by step against a hand-kept model of the write contract.
+  - `test/domain/invariants_test.dart`: phrase-parser fuzz, plus split-calculator and debt-simplifier properties.
+  - `burn_rate_test.dart`: 5,000 random snapshots checking the engine invariants, recalibration monotonicity and exact pacing.
+  - `budget_cycle_test.dart`: every day of 2026–27 for all 31 reset days.
+- Calendar code must survive `TZ=America/New_York` (25 h days), `America/Santiago` (DST at midnight: a day can start at 01:00), `Australia/Lord_Howe` and `Asia/Kolkata`; `tool/test_all.sh` runs domain, provider and database tests in each. Never assume a day is 24 h or starts at hour 0.
+- `.github/workflows/ci.yml` runs `tool/test_all.sh` on Ubuntu (Chrome and Android SDK present) and `xcodebuild test -only-testing:RunnerTests` on macOS, which is the only place the Swift code is compiled.
+- A preview built in `build` must catch `ArgumentError` from `toDraft` (a friend-paid bill below one paisa per head gives the user no share); the Swift intent rejects the same case.
 - `test/support/app_harness.dart` drives the real app at 390×844 against an in-memory ledger with a fixed clock and a `FakeTrialReminders`; Flutter fails a test on any RenderFlex overflow, so the flows in `test/ui_flows_test.dart` double as phone-width layout checks.
 - UI must render `asyncValue.value` when present, not only `AsyncData`: the resume sync invalidates the day, so providers briefly refresh and a pure `AsyncData` match would flash a spinner on every resume.
 - Riverpod 3 pauses or disposes unlistened providers: tests must `container.listen` before reading (see `nextValue` in `test/providers/engine_providers_test.dart`).

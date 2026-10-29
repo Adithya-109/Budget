@@ -154,6 +154,31 @@ void main() {
     expect(transfers.length, lessThanOrEqualTo(balances.length - 1));
   });
 
+  test(
+    'big group of separate sub-groups never needs more than the raw IOUs',
+    () {
+      // 8 unrelated tables of 3 (24 people, above the exact limit): one person
+      // paid for two others at each. Merging them all into one greedy group
+      // used to produce up to 23 transfers for 16 IOUs.
+      final debts = [
+        for (var t = 0; t < 8; t++) ...[
+          d('t$t-a', 't$t-payer', 100 * (t + 1)),
+          d('t$t-b', 't$t-payer', 70 * (t + 3)),
+        ],
+      ];
+      final transfers = DebtSimplifier.simplify(debts);
+      expectSettles(DebtSimplifier.netBalances(debts), transfers);
+      expect(transfers, hasLength(16));
+      expect(
+        transfers.every(
+          (t) => t.from.split('-').first == t.to.split('-').first,
+        ),
+        isTrue,
+        reason: 'money stays inside each table',
+      );
+    },
+  );
+
   test('heuristic pairs exact opposites first', () {
     final balances = {
       for (var i = 0; i < 10; i++) 'c$i': 100 * (i + 1),
