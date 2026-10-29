@@ -169,18 +169,21 @@ class _GroupSettleScreenState extends ConsumerState<GroupSettleScreen> {
             runSpacing: 8,
             children: [
               for (final p in _people)
-                InputChip(
-                  label: Text(p),
-                  onDeleted: p == _you
-                      ? null
-                      : () => setState(() {
-                          _people.remove(p);
-                          for (final b in _bills) {
-                            b.sharedBy = {...b.sharedBy}..remove(p);
-                            if (b.payer == p) b.payer = _you;
-                          }
-                        }),
-                ),
+                // A plain Chip for "You": an InputChip with no actions
+                // renders as disabled.
+                if (p == _you)
+                  Chip(label: Text(p))
+                else
+                  InputChip(
+                    label: Text(p),
+                    onDeleted: () => setState(() {
+                      _people.remove(p);
+                      for (final b in _bills) {
+                        b.sharedBy = {...b.sharedBy}..remove(p);
+                        if (b.payer == p) b.payer = _you;
+                      }
+                    }),
+                  ),
               ActionChip(
                 avatar: const Icon(Icons.person_add_alt_1, size: 16),
                 label: const Text('Add'),

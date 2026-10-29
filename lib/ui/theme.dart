@@ -64,6 +64,9 @@ ThemeData buildSplitBurnTheme() {
     scaffoldBackgroundColor: SbColors.ink,
     canvasColor: SbColors.ink,
   );
+  // Component styles build on the theme's label style so they keep the
+  // platform font (a bare TextStyle drops the family).
+  final label = base.textTheme.labelLarge!;
   return base.copyWith(
     textTheme: base.textTheme.apply(
       bodyColor: SbColors.paper,
@@ -102,7 +105,7 @@ ThemeData buildSplitBurnTheme() {
         shape: const RoundedRectangleBorder(
           side: BorderSide(color: SbColors.outline, width: 2),
         ),
-        textStyle: const TextStyle(
+        textStyle: label.copyWith(
           fontWeight: FontWeight.w900,
           letterSpacing: 0.5,
         ),
@@ -114,23 +117,23 @@ ThemeData buildSplitBurnTheme() {
         foregroundColor: SbColors.paper,
         side: const BorderSide(color: SbColors.outline, width: 2),
         shape: const RoundedRectangleBorder(),
-        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+        textStyle: label.copyWith(fontWeight: FontWeight.w800),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: SbColors.lime,
-        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+        textStyle: label.copyWith(fontWeight: FontWeight.w800),
       ),
     ),
-    chipTheme: const ChipThemeData(
+    chipTheme: ChipThemeData(
       backgroundColor: SbColors.surface,
       selectedColor: SbColors.lime,
-      side: BorderSide(color: SbColors.outline, width: 1.5),
-      shape: RoundedRectangleBorder(),
-      labelStyle: TextStyle(fontWeight: FontWeight.w700),
-      secondaryLabelStyle: TextStyle(
+      side: const BorderSide(color: SbColors.outline, width: 1.5),
+      shape: const RoundedRectangleBorder(),
+      labelStyle: label.copyWith(fontWeight: FontWeight.w700),
+      secondaryLabelStyle: label.copyWith(
         color: SbColors.ink,
         fontWeight: FontWeight.w800,
       ),
@@ -193,9 +196,9 @@ ThemeData buildSplitBurnTheme() {
         side: BorderSide(color: SbColors.outline, width: 2),
       ),
     ),
-    snackBarTheme: const SnackBarThemeData(
+    snackBarTheme: SnackBarThemeData(
       backgroundColor: SbColors.paper,
-      contentTextStyle: TextStyle(
+      contentTextStyle: base.textTheme.bodyMedium!.copyWith(
         color: SbColors.ink,
         fontWeight: FontWeight.w700,
       ),
