@@ -1,0 +1,49 @@
+# Publishes the zero-install tab viewer (the Flutter Web build) to GitHub
+# Pages, where shared SplitBurn links (https://<owner>.github.io/Budget/#/l/…)
+# open. Enable it once: repo Settings → Pages → Source: GitHub Actions.
+name: Web ledger
+
+on:
+  push:
+    branches: [main]
+    paths: ['lib/**', 'web/**', 'pubspec.*', '.github/workflows/web-ledger.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
+      - run: >-
+          flutter build web --release
+          --base-href "/${{ github.event.repository.name }}/"
+          --dart-define=WEB_LEDGER_BASE_URL=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

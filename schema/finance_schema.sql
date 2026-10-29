@@ -7,7 +7,7 @@ PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS "budget_config" ("id" INTEGER NOT NULL DEFAULT 1 CHECK("id" = 1), "monthly_allowance" REAL NOT NULL DEFAULT 15000.0, "current_bank_balance" REAL NOT NULL DEFAULT 15000.0, "cycle_reset_day" INTEGER NOT NULL DEFAULT 1 CHECK("cycle_reset_day" BETWEEN 1 AND 31), "currency_symbol" TEXT NOT NULL DEFAULT '₹', PRIMARY KEY ("id"));
+CREATE TABLE IF NOT EXISTS "budget_config" ("id" INTEGER NOT NULL DEFAULT 1 CHECK("id" = 1), "monthly_allowance" REAL NOT NULL DEFAULT 15000.0, "current_bank_balance" REAL NOT NULL DEFAULT 15000.0, "cycle_reset_day" INTEGER NOT NULL DEFAULT 1 CHECK("cycle_reset_day" BETWEEN 1 AND 31), "currency_symbol" TEXT NOT NULL DEFAULT '₹', "owner_name" TEXT NULL, "owner_payment_handle" TEXT NULL, PRIMARY KEY ("id"));
 
 CREATE TABLE IF NOT EXISTS "split_entries" ("id" TEXT NOT NULL, "transaction_id" TEXT NOT NULL REFERENCES transactions (id) ON DELETE CASCADE, "friend_id" TEXT NOT NULL, "friend_name" TEXT NOT NULL, "friend_payment_handle" TEXT NULL, "amount" REAL NOT NULL, "direction" TEXT NOT NULL, "is_settled" INTEGER NOT NULL DEFAULT 0 CHECK ("is_settled" IN (0, 1)), "settled_at" INTEGER NULL, PRIMARY KEY ("id"));
 

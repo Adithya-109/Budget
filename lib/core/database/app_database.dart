@@ -24,7 +24,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -45,6 +45,12 @@ class AppDatabase extends _$AppDatabase {
         }
       }
       await _ensureBudgetConfigRow();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(budgetConfig, budgetConfig.ownerName);
+        await m.addColumn(budgetConfig, budgetConfig.ownerPaymentHandle);
+      }
     },
     beforeOpen: (details) async {
       // The connection setup already enables this; repeating it here keeps

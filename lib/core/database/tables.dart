@@ -29,6 +29,11 @@ class BudgetConfig extends Table {
       .withDefault(const Constant(1))();
   TextColumn get currencySymbol => text().withDefault(const Constant('₹'))();
 
+  /// The user's own name and UPI ID / Venmo handle, put on shared ledger
+  /// links so friends know who to pay (schema v2).
+  TextColumn get ownerName => text().nullable()();
+  TextColumn get ownerPaymentHandle => text().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {id};
 }

@@ -33,6 +33,16 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>SplitBurn scans restaurant receipts so friends can tap what they ate.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pick a photo of a receipt to split it item by item.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>upi</string>
+		<string>venmo</string>
+		<string>whatsapp</string>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>

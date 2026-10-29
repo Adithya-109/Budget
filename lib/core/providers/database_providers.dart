@@ -39,3 +39,33 @@ Stream<BudgetConfigRow> budgetSettings(Ref ref) =>
 @riverpod
 Stream<List<FriendBalance>> friendBalances(Ref ref) =>
     ref.watch(ledgerDaoProvider).watchFriendBalances();
+
+@riverpod
+Stream<List<LedgerTransaction>> recentTransactions(Ref ref) =>
+    ref.watch(ledgerDaoProvider).watchRecentTransactions(limit: 30);
+
+/// Every unsettled split, oldest first.
+@riverpod
+Stream<List<OpenSplit>> openSplits(Ref ref) =>
+    ref.watch(ledgerDaoProvider).watchOpenSplits();
+
+@riverpod
+Stream<List<SplitEntry>> transactionSplits(Ref ref, String transactionId) =>
+    ref.watch(ledgerDaoProvider).watchSplitsForTransaction(transactionId);
+
+@riverpod
+Stream<List<Subscription>> activeSubscriptions(Ref ref) =>
+    ref.watch(subscriptionsDaoProvider).watchActive();
+
+@riverpod
+Stream<List<Subscription>> subscriptionGraveyard(Ref ref) =>
+    ref.watch(subscriptionsDaoProvider).watchGraveyard();
+
+/// The user's currency symbol (₹ until settings load).
+@riverpod
+String currencySymbol(Ref ref) =>
+    ref.watch(budgetSettingsProvider).value?.currencySymbol ?? '₹';
+
+@riverpod
+Stream<LedgerTransaction?> transactionById(Ref ref, String id) =>
+    ref.watch(ledgerDaoProvider).watchTransaction(id);

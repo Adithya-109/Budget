@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import UserNotifications
 import WidgetKit
 
 @main
@@ -11,6 +12,9 @@ import WidgetKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // Lets flutter_local_notifications show Free Trial Shield alerts while
+    // the app is in the foreground and route taps back to Dart.
+    UNUserNotificationCenter.current().delegate = self
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

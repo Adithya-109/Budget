@@ -68,6 +68,28 @@ class $BudgetConfigTable extends BudgetConfig
     requiredDuringInsert: false,
     defaultValue: const Constant('₹'),
   );
+  static const VerificationMeta _ownerNameMeta = const VerificationMeta(
+    'ownerName',
+  );
+  @override
+  late final GeneratedColumn<String> ownerName = GeneratedColumn<String>(
+    'owner_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _ownerPaymentHandleMeta =
+      const VerificationMeta('ownerPaymentHandle');
+  @override
+  late final GeneratedColumn<String> ownerPaymentHandle =
+      GeneratedColumn<String>(
+        'owner_payment_handle',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -75,6 +97,8 @@ class $BudgetConfigTable extends BudgetConfig
     currentBankBalance,
     cycleResetDay,
     currencySymbol,
+    ownerName,
+    ownerPaymentHandle,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -127,6 +151,21 @@ class $BudgetConfigTable extends BudgetConfig
         ),
       );
     }
+    if (data.containsKey('owner_name')) {
+      context.handle(
+        _ownerNameMeta,
+        ownerName.isAcceptableOrUnknown(data['owner_name']!, _ownerNameMeta),
+      );
+    }
+    if (data.containsKey('owner_payment_handle')) {
+      context.handle(
+        _ownerPaymentHandleMeta,
+        ownerPaymentHandle.isAcceptableOrUnknown(
+          data['owner_payment_handle']!,
+          _ownerPaymentHandleMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -156,6 +195,14 @@ class $BudgetConfigTable extends BudgetConfig
         DriftSqlType.string,
         data['${effectivePrefix}currency_symbol'],
       )!,
+      ownerName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_name'],
+      ),
+      ownerPaymentHandle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_payment_handle'],
+      ),
     );
   }
 
@@ -173,12 +220,19 @@ class BudgetConfigRow extends DataClass implements Insertable<BudgetConfigRow> {
   /// Day of month the allowance arrives. 29–31 clamp to the month's last day.
   final int cycleResetDay;
   final String currencySymbol;
+
+  /// The user's own name and UPI ID / Venmo handle, put on shared ledger
+  /// links so friends know who to pay (schema v2).
+  final String? ownerName;
+  final String? ownerPaymentHandle;
   const BudgetConfigRow({
     required this.id,
     required this.monthlyAllowance,
     required this.currentBankBalance,
     required this.cycleResetDay,
     required this.currencySymbol,
+    this.ownerName,
+    this.ownerPaymentHandle,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -188,6 +242,12 @@ class BudgetConfigRow extends DataClass implements Insertable<BudgetConfigRow> {
     map['current_bank_balance'] = Variable<double>(currentBankBalance);
     map['cycle_reset_day'] = Variable<int>(cycleResetDay);
     map['currency_symbol'] = Variable<String>(currencySymbol);
+    if (!nullToAbsent || ownerName != null) {
+      map['owner_name'] = Variable<String>(ownerName);
+    }
+    if (!nullToAbsent || ownerPaymentHandle != null) {
+      map['owner_payment_handle'] = Variable<String>(ownerPaymentHandle);
+    }
     return map;
   }
 
@@ -198,6 +258,12 @@ class BudgetConfigRow extends DataClass implements Insertable<BudgetConfigRow> {
       currentBankBalance: Value(currentBankBalance),
       cycleResetDay: Value(cycleResetDay),
       currencySymbol: Value(currencySymbol),
+      ownerName: ownerName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerName),
+      ownerPaymentHandle: ownerPaymentHandle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerPaymentHandle),
     );
   }
 
@@ -214,6 +280,10 @@ class BudgetConfigRow extends DataClass implements Insertable<BudgetConfigRow> {
       ),
       cycleResetDay: serializer.fromJson<int>(json['cycleResetDay']),
       currencySymbol: serializer.fromJson<String>(json['currencySymbol']),
+      ownerName: serializer.fromJson<String?>(json['ownerName']),
+      ownerPaymentHandle: serializer.fromJson<String?>(
+        json['ownerPaymentHandle'],
+      ),
     );
   }
   @override
@@ -225,6 +295,8 @@ class BudgetConfigRow extends DataClass implements Insertable<BudgetConfigRow> {
       'currentBankBalance': serializer.toJson<double>(currentBankBalance),
       'cycleResetDay': serializer.toJson<int>(cycleResetDay),
       'currencySymbol': serializer.toJson<String>(currencySymbol),
+      'ownerName': serializer.toJson<String?>(ownerName),
+      'ownerPaymentHandle': serializer.toJson<String?>(ownerPaymentHandle),
     };
   }
 
@@ -234,12 +306,18 @@ class BudgetConfigRow extends DataClass implements Insertable<BudgetConfigRow> {
     double? currentBankBalance,
     int? cycleResetDay,
     String? currencySymbol,
+    Value<String?> ownerName = const Value.absent(),
+    Value<String?> ownerPaymentHandle = const Value.absent(),
   }) => BudgetConfigRow(
     id: id ?? this.id,
     monthlyAllowance: monthlyAllowance ?? this.monthlyAllowance,
     currentBankBalance: currentBankBalance ?? this.currentBankBalance,
     cycleResetDay: cycleResetDay ?? this.cycleResetDay,
     currencySymbol: currencySymbol ?? this.currencySymbol,
+    ownerName: ownerName.present ? ownerName.value : this.ownerName,
+    ownerPaymentHandle: ownerPaymentHandle.present
+        ? ownerPaymentHandle.value
+        : this.ownerPaymentHandle,
   );
   BudgetConfigRow copyWithCompanion(BudgetConfigCompanion data) {
     return BudgetConfigRow(
@@ -256,6 +334,10 @@ class BudgetConfigRow extends DataClass implements Insertable<BudgetConfigRow> {
       currencySymbol: data.currencySymbol.present
           ? data.currencySymbol.value
           : this.currencySymbol,
+      ownerName: data.ownerName.present ? data.ownerName.value : this.ownerName,
+      ownerPaymentHandle: data.ownerPaymentHandle.present
+          ? data.ownerPaymentHandle.value
+          : this.ownerPaymentHandle,
     );
   }
 
@@ -266,7 +348,9 @@ class BudgetConfigRow extends DataClass implements Insertable<BudgetConfigRow> {
           ..write('monthlyAllowance: $monthlyAllowance, ')
           ..write('currentBankBalance: $currentBankBalance, ')
           ..write('cycleResetDay: $cycleResetDay, ')
-          ..write('currencySymbol: $currencySymbol')
+          ..write('currencySymbol: $currencySymbol, ')
+          ..write('ownerName: $ownerName, ')
+          ..write('ownerPaymentHandle: $ownerPaymentHandle')
           ..write(')'))
         .toString();
   }
@@ -278,6 +362,8 @@ class BudgetConfigRow extends DataClass implements Insertable<BudgetConfigRow> {
     currentBankBalance,
     cycleResetDay,
     currencySymbol,
+    ownerName,
+    ownerPaymentHandle,
   );
   @override
   bool operator ==(Object other) =>
@@ -287,7 +373,9 @@ class BudgetConfigRow extends DataClass implements Insertable<BudgetConfigRow> {
           other.monthlyAllowance == this.monthlyAllowance &&
           other.currentBankBalance == this.currentBankBalance &&
           other.cycleResetDay == this.cycleResetDay &&
-          other.currencySymbol == this.currencySymbol);
+          other.currencySymbol == this.currencySymbol &&
+          other.ownerName == this.ownerName &&
+          other.ownerPaymentHandle == this.ownerPaymentHandle);
 }
 
 class BudgetConfigCompanion extends UpdateCompanion<BudgetConfigRow> {
@@ -296,12 +384,16 @@ class BudgetConfigCompanion extends UpdateCompanion<BudgetConfigRow> {
   final Value<double> currentBankBalance;
   final Value<int> cycleResetDay;
   final Value<String> currencySymbol;
+  final Value<String?> ownerName;
+  final Value<String?> ownerPaymentHandle;
   const BudgetConfigCompanion({
     this.id = const Value.absent(),
     this.monthlyAllowance = const Value.absent(),
     this.currentBankBalance = const Value.absent(),
     this.cycleResetDay = const Value.absent(),
     this.currencySymbol = const Value.absent(),
+    this.ownerName = const Value.absent(),
+    this.ownerPaymentHandle = const Value.absent(),
   });
   BudgetConfigCompanion.insert({
     this.id = const Value.absent(),
@@ -309,6 +401,8 @@ class BudgetConfigCompanion extends UpdateCompanion<BudgetConfigRow> {
     this.currentBankBalance = const Value.absent(),
     this.cycleResetDay = const Value.absent(),
     this.currencySymbol = const Value.absent(),
+    this.ownerName = const Value.absent(),
+    this.ownerPaymentHandle = const Value.absent(),
   });
   static Insertable<BudgetConfigRow> custom({
     Expression<int>? id,
@@ -316,6 +410,8 @@ class BudgetConfigCompanion extends UpdateCompanion<BudgetConfigRow> {
     Expression<double>? currentBankBalance,
     Expression<int>? cycleResetDay,
     Expression<String>? currencySymbol,
+    Expression<String>? ownerName,
+    Expression<String>? ownerPaymentHandle,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -324,6 +420,9 @@ class BudgetConfigCompanion extends UpdateCompanion<BudgetConfigRow> {
         'current_bank_balance': currentBankBalance,
       if (cycleResetDay != null) 'cycle_reset_day': cycleResetDay,
       if (currencySymbol != null) 'currency_symbol': currencySymbol,
+      if (ownerName != null) 'owner_name': ownerName,
+      if (ownerPaymentHandle != null)
+        'owner_payment_handle': ownerPaymentHandle,
     });
   }
 
@@ -333,6 +432,8 @@ class BudgetConfigCompanion extends UpdateCompanion<BudgetConfigRow> {
     Value<double>? currentBankBalance,
     Value<int>? cycleResetDay,
     Value<String>? currencySymbol,
+    Value<String?>? ownerName,
+    Value<String?>? ownerPaymentHandle,
   }) {
     return BudgetConfigCompanion(
       id: id ?? this.id,
@@ -340,6 +441,8 @@ class BudgetConfigCompanion extends UpdateCompanion<BudgetConfigRow> {
       currentBankBalance: currentBankBalance ?? this.currentBankBalance,
       cycleResetDay: cycleResetDay ?? this.cycleResetDay,
       currencySymbol: currencySymbol ?? this.currencySymbol,
+      ownerName: ownerName ?? this.ownerName,
+      ownerPaymentHandle: ownerPaymentHandle ?? this.ownerPaymentHandle,
     );
   }
 
@@ -361,6 +464,12 @@ class BudgetConfigCompanion extends UpdateCompanion<BudgetConfigRow> {
     if (currencySymbol.present) {
       map['currency_symbol'] = Variable<String>(currencySymbol.value);
     }
+    if (ownerName.present) {
+      map['owner_name'] = Variable<String>(ownerName.value);
+    }
+    if (ownerPaymentHandle.present) {
+      map['owner_payment_handle'] = Variable<String>(ownerPaymentHandle.value);
+    }
     return map;
   }
 
@@ -371,7 +480,9 @@ class BudgetConfigCompanion extends UpdateCompanion<BudgetConfigRow> {
           ..write('monthlyAllowance: $monthlyAllowance, ')
           ..write('currentBankBalance: $currentBankBalance, ')
           ..write('cycleResetDay: $cycleResetDay, ')
-          ..write('currencySymbol: $currencySymbol')
+          ..write('currencySymbol: $currencySymbol, ')
+          ..write('ownerName: $ownerName, ')
+          ..write('ownerPaymentHandle: $ownerPaymentHandle')
           ..write(')'))
         .toString();
   }
@@ -2388,6 +2499,8 @@ typedef $$BudgetConfigTableCreateCompanionBuilder =
       Value<double> currentBankBalance,
       Value<int> cycleResetDay,
       Value<String> currencySymbol,
+      Value<String?> ownerName,
+      Value<String?> ownerPaymentHandle,
     });
 typedef $$BudgetConfigTableUpdateCompanionBuilder =
     BudgetConfigCompanion Function({
@@ -2396,6 +2509,8 @@ typedef $$BudgetConfigTableUpdateCompanionBuilder =
       Value<double> currentBankBalance,
       Value<int> cycleResetDay,
       Value<String> currencySymbol,
+      Value<String?> ownerName,
+      Value<String?> ownerPaymentHandle,
     });
 
 class $$BudgetConfigTableFilterComposer
@@ -2429,6 +2544,16 @@ class $$BudgetConfigTableFilterComposer
 
   ColumnFilters<String> get currencySymbol => $composableBuilder(
     column: $table.currencySymbol,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerName => $composableBuilder(
+    column: $table.ownerName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerPaymentHandle => $composableBuilder(
+    column: $table.ownerPaymentHandle,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2466,6 +2591,16 @@ class $$BudgetConfigTableOrderingComposer
     column: $table.currencySymbol,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get ownerName => $composableBuilder(
+    column: $table.ownerName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ownerPaymentHandle => $composableBuilder(
+    column: $table.ownerPaymentHandle,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BudgetConfigTableAnnotationComposer
@@ -2497,6 +2632,14 @@ class $$BudgetConfigTableAnnotationComposer
 
   GeneratedColumn<String> get currencySymbol => $composableBuilder(
     column: $table.currencySymbol,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ownerName =>
+      $composableBuilder(column: $table.ownerName, builder: (column) => column);
+
+  GeneratedColumn<String> get ownerPaymentHandle => $composableBuilder(
+    column: $table.ownerPaymentHandle,
     builder: (column) => column,
   );
 }
@@ -2537,12 +2680,16 @@ class $$BudgetConfigTableTableManager
                 Value<double> currentBankBalance = const Value.absent(),
                 Value<int> cycleResetDay = const Value.absent(),
                 Value<String> currencySymbol = const Value.absent(),
+                Value<String?> ownerName = const Value.absent(),
+                Value<String?> ownerPaymentHandle = const Value.absent(),
               }) => BudgetConfigCompanion(
                 id: id,
                 monthlyAllowance: monthlyAllowance,
                 currentBankBalance: currentBankBalance,
                 cycleResetDay: cycleResetDay,
                 currencySymbol: currencySymbol,
+                ownerName: ownerName,
+                ownerPaymentHandle: ownerPaymentHandle,
               ),
           createCompanionCallback:
               ({
@@ -2551,12 +2698,16 @@ class $$BudgetConfigTableTableManager
                 Value<double> currentBankBalance = const Value.absent(),
                 Value<int> cycleResetDay = const Value.absent(),
                 Value<String> currencySymbol = const Value.absent(),
+                Value<String?> ownerName = const Value.absent(),
+                Value<String?> ownerPaymentHandle = const Value.absent(),
               }) => BudgetConfigCompanion.insert(
                 id: id,
                 monthlyAllowance: monthlyAllowance,
                 currentBankBalance: currentBankBalance,
                 cycleResetDay: cycleResetDay,
                 currencySymbol: currencySymbol,
+                ownerName: ownerName,
+                ownerPaymentHandle: ownerPaymentHandle,
               ),
           withReferenceMapper: (p0) => p0
               .map(

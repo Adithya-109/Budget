@@ -56,6 +56,19 @@ class BudgetDao extends DatabaseAccessor<AppDatabase> with _$BudgetDaoMixin {
     );
   }
 
+  /// The user's name and UPI ID / Venmo handle for shared ledger links.
+  /// Blank values clear them.
+  Future<void> updateOwner({String? name, String? paymentHandle}) async {
+    String? clean(String? v) =>
+        (v == null || v.trim().isEmpty) ? null : v.trim();
+    await (update(budgetConfig)..where((c) => c.id.equals(1))).write(
+      BudgetConfigCompanion(
+        ownerName: Value(clean(name)),
+        ownerPaymentHandle: Value(clean(paymentHandle)),
+      ),
+    );
+  }
+
   /// Overwrites the balance after the user checks their real bank app.
   Future<void> setBankBalance(int balanceMinor) async {
     await (update(budgetConfig)..where((c) => c.id.equals(1))).write(

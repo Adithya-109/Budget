@@ -43,9 +43,26 @@ Phase 2 (native bridges) is done:
 - One schema, generated from Drift for Swift and Kotlin, and one phrase
   parser in Dart and Swift, checked against shared fixtures.
 
+Phase 4 (the app itself) is done:
+
+- **Today:** safe-to-spend hero that animates tomorrow's recalibrated limit,
+  Survival Mode meter with the date you'd hit ₹0, true liquid balance, a
+  natural-language command bar, a burn chart and recent activity.
+- **Split a bill:** equal, exact, percentage, or scan the receipt and tap
+  who had what (tax and tip spread proportionally).
+- **Friends:** net balances, simplified settle-ups, Pay Now via UPI or Venmo,
+  group trip settle-up, and the Nudge Bot (polite note, Survival Facts meme
+  card, monthly digest) shared with a link friends open without installing
+  anything.
+- **Bills:** Free Trial Shield with countdowns and alerts 48h and 12h before
+  a charge, flatmate bills that bill everyone monthly, and a graveyard.
+- **Settings:** allowance, cycle day, your UPI ID, and "match my bank app".
+
 After cloning, open `ios/Runner.xcworkspace`, set your signing team for the
 `Runner` and `BalanceWidgetExtension` targets, and tick the
-`group.com.splitburn.app` App Group. See `CLAUDE.md` for details.
+`group.com.splitburn.app` App Group. To publish the zero-install tab viewer,
+enable GitHub Pages (Settings → Pages → Source: GitHub Actions). See
+`CLAUDE.md` for details.
 
 ## Development
 

@@ -179,8 +179,8 @@ Output full, production-ready, modular code without placeholders or `// TODO` st
 - [x] Phase 1: Project scaffolding & shared SQLite core
 - [x] Phase 2: Native iOS & Android bridges (Kotlin compile-checked + JVM-tested; Swift not compiled yet, see below)
 - [x] Phase 3: Core engines (burn rate, Days-Until-Broke, True Liquid Balance reconciler, resume sync)
-- [ ] Phase 4: UI screens
-- [ ] Phase 5: Verification & testing (Phases 1–3 already ship tests for their own code)
+- [x] Phase 4: UI screens (dashboard, split & receipt scanner, social ledger & Nudge Bot, group settle-up, bills & Trial Shield, settings, zero-install web viewer)
+- [ ] Phase 5: Verification & testing (Phases 1–4 already ship tests for their own code, including phone-size widget flows)
 
 ## Git
 - Commit as the repository owner only. Do **not** add `Co-Authored-By`, `Claude-Session` or any other attribution trailers to commit messages.
@@ -195,12 +195,15 @@ UPDATE_SCHEMA=1 flutter test test/database/schema_snapshot_test.dart  # refresh 
 ruby tool/ios/configure_xcode_project.rb   # (gem install xcodeproj) re-wire native targets into Runner.xcodeproj
 cd android && ./gradlew :app:testDebugUnitTest   # Kotlin UPI parser tests
 # iOS: open ios/Runner.xcworkspace and run the RunnerTests scheme (parser parity + SQLite manager tests)
+CHROME_EXECUTABLE=<chrome> flutter test --platform chrome test/features/feature_logic_test.dart  # web parity of link encoding
+flutter build web --release --base-href /Budget/   # zero-install tab viewer
 ```
 
 ## One-time manual setup (cannot be done from source files)
 1. Open `ios/Runner.xcworkspace` in Xcode, pick your **Team** under *Signing & Capabilities* for **Runner** and **BalanceWidgetExtension**.
 2. Both targets already carry `group.com.splitburn.app` in their `.entitlements`; under *Signing & Capabilities → App Groups* tick that group so Xcode registers it with your developer account.
 3. Android: in the app, the user grants *Notification access* to "SplitBurn UPI auto-capture" (the Dart `NativeBridge.openUpiCaptureSettings()` opens the right screen).
+4. Shared tab links open on GitHub Pages: repo *Settings → Pages → Source: GitHub Actions*, then `.github/workflows/web-ledger.yml` publishes the web viewer on every push to `main` (or run it manually). Links point at `https://<owner>.github.io/<repo>/`; override with `--dart-define=WEB_LEDGER_BASE_URL=…`.
 
 ## Decisions that deviate from / refine the spec
 - **`sqlite3_flutter_libs` is not a dependency.** With `sqlite3` 3.x the native library ships via build hooks and `sqlite3_flutter_libs` 0.6.0 is an empty end-of-life shim; depending on `sqlite3` directly is the supported setup.
@@ -214,8 +217,12 @@ cd android && ./gradlew :app:testDebugUnitTest   # Kotlin UPI parser tests
 - **Drift owns `PRAGMA user_version`.** Native code never writes it and only runs the idempotent generated DDL. Drift's `onCreate` tolerates a schema a native writer created first (`test/database/native_writer_contract_test.dart`).
 - **One SQLite copy per process.** Two SQLite libraries in one process break POSIX locks and can corrupt the file. iOS: `pubspec.yaml` sets `sqlite3` `source: ios: process`, so Dart uses the system SQLite that Runner links (`-lsqlite3`) for the App Intents. Android: Dart bundles its own SQLite, so the notification listener runs in a separate `:capture` process.
 - **iOS App Intents live in Runner** and run without booting Flutter: the template's UIScene lifecycle only creates the implicit engine when a scene shows the UI, which background intent launches never do.
-- **Widget** bundle ID `com.splitburn.app.BalanceWidget`, deployment target iOS 16 (whole project). Its version comes from Flutter's `Generated.xcconfig` via `BalanceWidget.xcconfig`. Deep link `splitburn://dashboard` is registered in Runner's Info.plist (routing lands in Phase 4).
+- **Widget** bundle ID `com.splitburn.app.BalanceWidget`, deployment target iOS 16 (whole project). Its version comes from Flutter's `Generated.xcconfig` via `BalanceWidget.xcconfig`. Deep link `splitburn://dashboard` is registered in Runner's Info.plist; the app always opens on the Today tab, which is where a widget tap should land.
 - **Storage channel** `com.splitburn.app/storage`: `getAppGroupPath` (String or nil) and `reloadWidgets`. **Capture channel** `com.splitburn.app/capture` (Android): `isUpiCaptureEnabled`, `openUpiCaptureSettings`. Dart wraps both in `lib/core/native/native_bridge.dart`.
+- **Schema v2** adds `budget_config.owner_name` / `owner_payment_handle` (the user's own UPI ID or Venmo, put on shared links). Drift migrates v1 files in place (`test/database/migration_test.dart`, fixture `test/fixtures/finance_schema_v1.sql`).
+- **Zero-install links** carry the whole tab in the URL `#fragment` (never sent to the host) as base64url JSON with an FNV-1a checksum (`lib/features/ledger/shared_ledger.dart`). FNV must use `fnv1a32` (split multiply): a plain `h * 0x01000193` loses precision in JavaScript and broke every link in the web viewer.
+- **The web build is only the tab viewer** (`lib/features/web_ledger/web_ledger_app.dart`, chosen in `main.dart` via `kIsWeb`): no database on the web. Every route name (= URL fragment) is treated as a payload, so opening another link in the same tab works.
+- **Free Trial Shield** uses inexact Android alarms (`inexactAllowWhileIdle`), so no exact-alarm permission is needed; reminders are rescheduled from the database on every launch / resume, which also covers reboots and edits made elsewhere.
 - **`home_widget` is not used**: the widget reads SQLite directly and the app reloads it through the storage channel.
 - **UPI auto-capture** logs only clear, completed debits from an allow-list of UPI/bank apps (bank SMS must also look like an account alert). It skips credits, refunds, collect requests, failures, pending payments, reminders and OTP texts. Duplicates are dropped by UPI reference (last 200 kept in the `:capture` process's SharedPreferences) and by "same amount from `ANDROID_UPI_AUTO` within ±180 s" (GPay + bank SMS for one payment). Rows are solo expenses (`my_share = total_paid`); the user splits them later via `LedgerDao.resplitTransaction`.
 
@@ -229,6 +236,8 @@ All money is `REAL` in major units (₹), rounded to 2 dp. Domain code computes 
 | Friend settles an `OWES_ME` row | — | `is_settled = 1`, `settled_at = now` | `+= amount` (not income, not spend) |
 | I settle an `I_OWE` row | — | `is_settled = 1`, `settled_at = now` | `-= amount` |
 | Transaction deleted | row removed (splits cascade) | — | every delta above for that transaction is reversed |
+
+| Group settle-up (`LedgerDao.logGroupSettlement`) | `paid_by_me = paid > 0`, `total_paid` = what I paid (or my share if I paid nothing), `my_share` = my share | `OWES_ME` per friend paying me, `I_OWE` per friend I pay (simplified transfers; they net to paid − share) | `-= paid` |
 
 Each event is one SQL transaction. Balance updates are relative (`SET current_bank_balance = current_bank_balance - ?`) so concurrent writers never lose updates.
 
@@ -267,7 +276,22 @@ Rules are documented on the Dart class. `test/fixtures/expense_phrases.json` is 
 - `lib/core/sync/ledger_sync.dart`: `LedgerSync.onForeground()` (markTablesUpdated via `syncExternalWrites`, re-read the day, charge due recurring bills, re-check UPI access) and `widgetRefresherProvider` (debounced WidgetKit reload whenever the ledger changes).
 - `lib/app.dart`: the root `SplitBurnApp` is the `WidgetsBindingObserver`; it syncs after the first frame and on every `AppLifecycleState.resumed`.
 
+## UI conventions (Phase 4)
+- Theme and building blocks: `lib/ui/theme.dart` (`SbColors`, `SbType`, `buildSplitBurnTheme`), `lib/ui/widgets.dart` (`BrutalCard`, `SbTag`, `SbLabel`, money input helpers), `lib/ui/prompts.dart`.
+- Dialogs that need a `TextEditingController` must own it in a `State` (use `promptText` / `promptMoney` / `promptFriendName`): disposing it right after `showDialog` returns crashes during the closing animation.
+- Each tab's `FloatingActionButton` needs a unique `heroTag`: all tabs live in one `IndexedStack`, so the default tag collides as soon as a page is pushed.
+- Never draw arrows or emoji the layout depends on as text glyphs in mono labels; use icons (`TransferLabel`, `SbTag(icon:)`).
+
 ## Riverpod / testing notes
+- `test/support/app_harness.dart` drives the real app at 390×844 against an in-memory ledger with a fixed clock and a `FakeTrialReminders`; Flutter fails a test on any RenderFlex overflow, so the flows in `test/ui_flows_test.dart` double as phone-width layout checks.
 - UI must render `asyncValue.value` when present, not only `AsyncData`: the resume sync invalidates the day, so providers briefly refresh and a pure `AsyncData` match would flash a spinner on every resume.
 - Riverpod 3 pauses or disposes unlistened providers: tests must `container.listen` before reading (see `nextValue` in `test/providers/engine_providers_test.dart`).
 - Widget tests that touch Drift: don't `pumpAndSettle` (loading spinners never settle) and close the database inside the test's fake-async zone while pumping (see `test/app_lifecycle_test.dart`).
+
+## Code map (Phase 4)
+- `lib/ui/`: theme, shared widgets, prompts, `home_shell.dart` (Today / Friends / Bills / Settings), `category_style.dart`.
+- `lib/features/dashboard/`: `dashboard_screen.dart`, `safe_to_spend_card.dart` (hero + animated recalibration), `survival_meter.dart` (Days-Until-Broke gauge + True Liquid Balance pill), `burn_chart.dart` (fl_chart), `command_bar.dart` (natural-language logging).
+- `lib/features/split/`: `split_sheet.dart` (equal / exact / % / receipt), `split_builder.dart` (`SplitForm` → `ExpenseDraft`), `receipt_parser.dart` (OCR rows → items, tax, tip, discount, total), `receipt_scanner.dart` (image_picker + ML Kit), `transaction_sheet.dart` (IOUs, re-split, delete).
+- `lib/features/ledger/`: `ledger_screen.dart`, `friend_detail_screen.dart` (settle, Pay Now deep links), `nudge_studio.dart` + `nudge_cards.dart` + `nudge_composer.dart` (Polite / Survival Facts meme card / Monthly digest, shared as PNG via `RepaintBoundary` + share_plus, or WhatsApp), `settle_links.dart` (UPI / Venmo URIs), `shared_ledger.dart` (link codec), `group_settle.dart` + `group_settle_screen.dart`.
+- `lib/features/bills/`: `bills_screen.dart` (trials with live countdowns, flatmate bills, graveyard), `add_bill_sheet.dart`, `trial_shield.dart` (reminder times, ids, countdown text), `trial_reminders.dart` (flutter_local_notifications scheduler).
+- `lib/features/settings/settings_screen.dart`, `lib/features/friends/friend_directory.dart`, `lib/features/web_ledger/web_ledger_app.dart`, `.github/workflows/web-ledger.yml`.

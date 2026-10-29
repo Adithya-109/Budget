@@ -133,6 +133,68 @@ class LedgerDao extends DatabaseAccessor<AppDatabase> with _$LedgerDaoMixin {
 
   static const untrackedSpendingMerchant = 'Untracked spending';
 
+  /// Records the user's part of a group settle-up (a trip where several
+  /// people paid): the cash they actually paid, their own share, and the
+  /// simplified transfers that involve them. Returns the transaction id.
+  ///
+  /// Contract: `paid_by_me = 1` and `bank −= paidMinor` when the user paid
+  /// anything; `my_share = shareMinor`; one `OWES_ME` row per friend paying
+  /// the user and one `I_OWE` row per friend the user pays. The transfers
+  /// must net to `paid − share`.
+  Future<String> logGroupSettlement({
+    required String label,
+    required int paidMinor,
+    required int shareMinor,
+    required TxnCategory category,
+    Map<FriendRef, int> owedToMe = const {},
+    Map<FriendRef, int> iOwe = const {},
+    DateTime? at,
+  }) {
+    if (label.trim().isEmpty) {
+      throw ArgumentError.value(label, 'label', 'is empty');
+    }
+    if (paidMinor < 0 || shareMinor < 0 || paidMinor + shareMinor == 0) {
+      throw ArgumentError('Nothing paid or consumed');
+    }
+    final incoming = owedToMe.values.fold<int>(0, (a, b) => a + b);
+    final outgoing = iOwe.values.fold<int>(0, (a, b) => a + b);
+    if (incoming - outgoing != paidMinor - shareMinor) {
+      throw ArgumentError(
+        'Transfers net to ${incoming - outgoing}, expected '
+        '${paidMinor - shareMinor}',
+      );
+    }
+    final id = _uuid.v4();
+    return transaction(() async {
+      await into(transactions).insert(
+        TransactionsCompanion.insert(
+          id: id,
+          merchant: label.trim(),
+          totalPaid: Money.toMajor(paidMinor > 0 ? paidMinor : shareMinor),
+          myShare: Money.toMajor(shareMinor),
+          category: category,
+          paidByMe: paidMinor > 0,
+          source: TxnSource.app,
+          createdAt: at ?? DateTime.now(),
+        ),
+      );
+      for (final MapEntry(key: friend, value: amount) in owedToMe.entries) {
+        if (amount > 0) {
+          await into(splitEntries)
+              .insert(_splitRow(id, friend, amount, SplitDirection.owesMe));
+        }
+      }
+      for (final MapEntry(key: friend, value: amount) in iOwe.entries) {
+        if (amount > 0) {
+          await into(splitEntries)
+              .insert(_splitRow(id, friend, amount, SplitDirection.iOwe));
+        }
+      }
+      await _adjustBankBalance(-paidMinor);
+      return id;
+    });
+  }
+
   Future<void> recategorize(String transactionId, TxnCategory category) async {
     await (update(transactions)..where((t) => t.id.equals(transactionId)))
         .write(TransactionsCompanion(category: Value(category)));
@@ -284,6 +346,9 @@ class LedgerDao extends DatabaseAccessor<AppDatabase> with _$LedgerDaoMixin {
           ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
         .watch();
   }
+
+  Stream<LedgerTransaction?> watchTransaction(String id) =>
+      (select(transactions)..where((t) => t.id.equals(id))).watchSingleOrNull();
 
   Future<LedgerTransaction?> transactionById(String id) =>
       (select(transactions)..where((t) => t.id.equals(id))).getSingleOrNull();
