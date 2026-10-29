@@ -125,6 +125,17 @@ runner_tests&.build_configurations&.each do |config|
   config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = DEPLOYMENT_TARGET
 end
 
+# --- Simulator architecture --------------------------------------------------
+# Google ML Kit (receipt scanning) ships no arm64-simulator slice, so on Apple
+# Silicon the simulator build runs as x86_64 under Rosetta. ios/Podfile applies
+# the same exclusion to every pod. i386 repeats Flutter's own exclusion, which
+# a target-level value would otherwise override.
+[runner, runner_tests, widget].compact.each do |target|
+  target.build_configurations.each do |config|
+    config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64 i386'
+  end
+end
+
 runner.add_dependency(widget) unless runner.dependencies.any? { |d| d.target == widget }
 
 embed = runner.copy_files_build_phases.find { |p| p.name == 'Embed Foundation Extensions' }

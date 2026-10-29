@@ -19,8 +19,8 @@ jobs:
   dart-and-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -38,7 +38,7 @@ jobs:
   ios:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -46,14 +46,28 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build ios --config-only --simulator --no-codesign
-      - name: RunnerTests (parser parity, SharedSQLiteManager, burn rate)
+      # Compile every Swift target (app, App Intents, widget, tests) for a real
+      # iPhone: the definitive "does the native code build" check.
+      - name: Compile Swift for iPhone (no signing)
         working-directory: ios
         run: |
+          xcodebuild build-for-testing \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO
+      # Google ML Kit has no arm64-simulator slice, so the simulator build is
+      # x86_64 (EXCLUDED_ARCHS in the project and Podfile) and runs under
+      # Rosetta on Apple Silicon runners.
+      - name: RunnerTests on the simulator (parser parity, SharedSQLiteManager, burn rate)
+        working-directory: ios
+        run: |
+          sudo softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || true
           device="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [^(]+' | sed 's/ *$//')"
-          echo "Simulator: $device"
+          echo "Simulator: $device (x86_64)"
           xcodebuild test \
             -workspace Runner.xcworkspace \
             -scheme Runner \
-            -destination "platform=iOS Simulator,name=$device" \
+            -destination "platform=iOS Simulator,name=$device,arch=x86_64" \
             -only-testing:RunnerTests \
             CODE_SIGNING_ALLOWED=NO
